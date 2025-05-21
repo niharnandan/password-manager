@@ -9,7 +9,11 @@ const config = {
       pages: 'build',
       assets: 'build',
       fallback: 'index.html'
-    })
+    }),
+    // Add this line to set the base path for GitHub Pages
+    paths: {
+      base: '/password-manager'
+    }
   }
 };
 
