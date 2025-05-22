@@ -70,6 +70,7 @@ export function initializeVault(password: string): void {
     const emptyVault: PasswordVault = {
       version: "1.0",
       vault: [],
+      globalNotes: "", // Initialize empty global notes
       verification: {
         marker: "VALID_VAULT",
         version: "1.0"
@@ -117,7 +118,12 @@ export function unlockVault(password: string): boolean {
     
     try {
       // Verify the decrypted content is valid JSON
-      JSON.parse(decrypted);
+      const parsedVault = JSON.parse(decrypted) as PasswordVault;
+      
+      // Handle migration for vaults without globalNotes field
+      if (parsedVault.globalNotes === undefined) {
+        parsedVault.globalNotes = "";
+      }
       
       // Store the key in memory
       masterKey.set(key);
@@ -232,6 +238,34 @@ export function deletePassword(id: string): void {
   const updatedVault: PasswordVault = {
     ...$vault,
     vault: $vault.vault.filter(entry => entry.id !== id)
+  };
+  
+  // Encrypt the updated vault
+  const { ciphertext, nonce } = encrypt(JSON.stringify(updatedVault), $masterKey);
+  
+  // Update the encrypted vault
+  encryptedVault.set({
+    ...$encryptedVault,
+    ciphertext,
+    nonce
+  });
+}
+
+// Update global notes
+export function updateGlobalNotes(notes: string): void {
+  const $vault = get(vault);
+  if (!browser || !$vault) return;
+  
+  const $masterKey = get(masterKey);
+  if (!$masterKey) return;
+  
+  const $encryptedVault = get(encryptedVault);
+  if (!$encryptedVault) return;
+  
+  // Update the vault with new global notes
+  const updatedVault: PasswordVault = {
+    ...$vault,
+    globalNotes: notes
   };
   
   // Encrypt the updated vault
