@@ -757,10 +757,12 @@
         </div>
 
         {#if isEditingNotes}
+          <!-- svelte-ignore a11y_autofocus -->
+          <!-- svelte-ignore element_invalid_self_closing_tag -->
           <textarea
             bind:value={notesEditContent}
             rows="20"
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm break-words"
             placeholder="Write your notes here..."
             autofocus
           />
@@ -768,7 +770,7 @@
           <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 min-h-96">
             {#if $vault?.globalNotes}
               <pre
-                class="whitespace-pre-wrap text-sm text-gray-900 dark:text-white font-mono">{$vault.globalNotes}</pre>
+                class="whitespace-pre-wrap break-words text-sm text-gray-900 dark:text-white font-mono">{$vault.globalNotes}</pre>
             {:else}
               <p class="text-gray-500 dark:text-gray-400 text-sm">
                 No notes yet. Click "Edit" to add some notes.
