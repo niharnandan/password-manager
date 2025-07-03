@@ -5,7 +5,8 @@
     isWebAuthnSupported, 
     hasWebAuthnCredential, 
     registerWebAuthnCredential, 
-    authenticateWithWebAuthn 
+    authenticateWithWebAuthn,
+    ensureUserGesture
   } from '$lib/utils/webauthn';
   import { getCachedVault } from '$lib/utils/local-storage';
   import { get } from 'svelte/store';
@@ -18,21 +19,42 @@
   let webAuthnAttempts = 0;
   let showPasswordForm = false;
   let autoWebAuthnTried = false;
+  let isDocumentFocused = true;
+  let webAuthnRetryCount = 0;
+  const MAX_WEBAUTHN_RETRIES = 3;
   
   // Check if WebAuthn is supported and if user has a credential
-  $: {
-    hasWebAuthn = isWebAuthnSupported() && hasWebAuthnCredential();
-  }
+  $: hasWebAuthn = isWebAuthnSupported() && hasWebAuthnCredential();
   
   // Auto-attempt WebAuthn on component mount
   onMount(() => {
-    if (hasWebAuthn && !autoWebAuthnTried) {
+    // Check document focus state
+    const handleFocus = () => {
+      isDocumentFocused = true;
+    };
+    const handleBlur = () => {
+      isDocumentFocused = false;
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('blur', handleBlur);
+    
+    // Set initial focus state
+    isDocumentFocused = document.hasFocus();
+    
+    if (hasWebAuthn && !autoWebAuthnTried && isDocumentFocused) {
       autoWebAuthnTried = true;
       // Small delay to let the component render first
       setTimeout(tryWebAuthnLogin, 100);
     } else if (!hasWebAuthn) {
       showPasswordForm = true;
     }
+    
+    // Cleanup event listeners
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('blur', handleBlur);
+    };
   });
   
   async function handleSubmit() {
@@ -48,7 +70,7 @@
         // Register WebAuthn credential after successful login
         const currentMasterKey = get(masterKey);
         if (currentMasterKey) {
-          const result = await registerWebAuthnCredential(password, currentMasterKey);
+          const result = await registerWebAuthnCredential('user', currentMasterKey);
           if (!result.success) {
             console.warn('WebAuthn registration failed:', result.error);
           }
@@ -66,8 +88,32 @@
     errorMessage = '';
     isLoading = true;
     webAuthnAttempts++;
+    webAuthnRetryCount++;
+    
+    // Check if document is focused
+    if (!document.hasFocus()) {
+      errorMessage = 'Document not focused. Please click and try again.';
+      isLoading = false;
+      return;
+    }
+    
+    // Check if we've exceeded retry limit
+    if (webAuthnRetryCount > MAX_WEBAUTHN_RETRIES) {
+      errorMessage = 'Too many attempts. Please use password instead.';
+      showPasswordForm = true;
+      isLoading = false;
+      return;
+    }
     
     try {
+      // Ensure user gesture is available for older Safari versions
+      const hasUserGesture = await ensureUserGesture();
+      if (!hasUserGesture) {
+        errorMessage = 'User interaction required. Please click and try again.';
+        isLoading = false;
+        return;
+      }
+      
       const result = await authenticateWithWebAuthn();
       if (result.success && result.masterKey) {
         // Try to load cached vault first
@@ -78,6 +124,9 @@
           encryptedVault.set(cachedVault);
           isAuthenticated.set(true);
           
+          // Reset retry count on success
+          webAuthnRetryCount = 0;
+          
           // Try to sync in the background
           try {
             await unlockVault(''); // This will attempt GitHub sync if configured
@@ -86,13 +135,23 @@
             console.warn('Background sync failed:', e);
           }
         } else {
-          errorMessage = 'No cached vault found. Please login with password first.';
+          errorMessage = 'No cached vault found. Please login with password first to enable Face ID.';
           showPasswordForm = true;
           masterKey.set(null);
         }
       } else {
-        // WebAuthn failed - let user try again indefinitely
-        errorMessage = `${result.error || 'Face ID failed'}. Try again or use password.`;
+        // Handle specific error cases
+        if (result.error?.includes('Document not focused')) {
+          errorMessage = 'Document not focused. Please click and try again.';
+        } else if (result.error?.includes('decrypt')) {
+          errorMessage = 'Face ID data corrupted. Please login with password to re-register.';
+          showPasswordForm = true;
+        } else if (result.error?.includes('Legacy')) {
+          errorMessage = 'Face ID needs to be re-registered. Please login with password.';
+          showPasswordForm = true;
+        } else {
+          errorMessage = `${result.error || 'Face ID failed'}. Try again or use password.`;
+        }
       }
     } catch (error) {
       console.error('WebAuthn authentication error:', error);
@@ -105,6 +164,7 @@
   function usePasswordInstead() {
     showPasswordForm = true;
     errorMessage = '';
+    webAuthnRetryCount = 0; // Reset retry count when switching to password
   }
   
   function handleOutsideClick(event: MouseEvent) {
@@ -162,12 +222,14 @@
               <button 
                 type="button"
                 on:click={tryWebAuthnLogin}
-                class="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 flex items-center justify-center"
+                disabled={webAuthnRetryCount >= MAX_WEBAUTHN_RETRIES}
+                class="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 flex items-center justify-center"
               >
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
                 </svg>
-                {webAuthnAttempts === 0 ? 'Use Face ID' : `Try Face ID Again`}
+                {webAuthnRetryCount >= MAX_WEBAUTHN_RETRIES ? 'Too many attempts' : 
+                 webAuthnAttempts === 0 ? 'Use Face ID' : `Try Face ID Again (${webAuthnRetryCount}/${MAX_WEBAUTHN_RETRIES})`}
               </button>
             {/if}
             
@@ -197,6 +259,7 @@
               id="password"
               type="password"
               bind:value={password}
+              autocomplete="current-password"
               class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Enter your master password"
               required
@@ -206,16 +269,24 @@
           
           <!-- WebAuthn Setup Checkbox (only show if WebAuthn is supported and not already set up) -->
           {#if isWebAuthnSupported() && !hasWebAuthnCredential()}
-            <div class="flex items-center">
+            <div class="flex items-center space-x-2">
               <input 
                 id="enable-webauthn"
                 type="checkbox"
                 bind:checked={enableWebAuthn}
                 class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               />
-              <label for="enable-webauthn" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+              <label for="enable-webauthn" class="block text-sm text-gray-700 dark:text-gray-300">
                 Enable Face ID / Touch ID for future logins
               </label>
+              <div class="group relative">
+                <svg class="w-4 h-4 text-gray-400 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  Your password won't be stored or visible during setup
+                </div>
+              </div>
             </div>
           {/if}
           
