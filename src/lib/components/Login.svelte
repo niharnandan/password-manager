@@ -10,6 +10,7 @@
     clearWebAuthnCredential
   } from '$lib/utils/webauthn';
   import { getCachedVault, clearCachedVault } from '$lib/utils/local-storage';
+  import { logSecurityEvent, trackLoginAttempt, getTrackedAttempts } from '$lib/utils/security-monitor';
   import { get } from 'svelte/store';
   
   let password = '';
@@ -76,8 +77,12 @@
       if (!success) {
         passwordRetryCount++;
         
+        // Track failed password attempt
+        trackLoginAttempt('password', 'failed');
+        
         // Check if we've exceeded retry limit for password attempts
         if (passwordRetryCount >= MAX_RETRIES) {
+          trackLoginAttempt('password', 'failed_threshold_exceeded');
           errorMessage = 'Too many failed password attempts. All data will be wiped for security.';
           isLoading = false;
           setTimeout(() => {
@@ -92,6 +97,9 @@
           errorMessage = `Invalid password or connection error (${passwordRetryCount}/${MAX_RETRIES} attempts)`;
         }
       } else {
+        // Track successful password login
+        trackLoginAttempt('password', 'success');
+        
         // Reset retry counts on successful login
         passwordRetryCount = 0;
         webAuthnRetryCount = 0;
@@ -115,8 +123,12 @@
     } catch (error) {
       passwordRetryCount++;
       
+      // Track failed password attempt (error case)
+      trackLoginAttempt('password', 'error');
+      
       // Check if we've exceeded retry limit for password attempts
       if (passwordRetryCount >= MAX_RETRIES) {
+        trackLoginAttempt('password', 'failed_threshold_exceeded');
         errorMessage = 'Too many failed attempts. All data will be wiped for security.';
         isLoading = false;
         setTimeout(() => {
@@ -151,6 +163,7 @@
     
     // Check if we've exceeded retry limit
     if (webAuthnRetryCount >= MAX_RETRIES) {
+      trackLoginAttempt('webauthn', 'failed_threshold_exceeded');
       errorMessage = 'Too many failed attempts. All data will be wiped for security.';
       isLoading = false;
       setTimeout(() => {
@@ -173,6 +186,9 @@
         // Try to load cached vault first
         const cachedVault = getCachedVault();
         if (cachedVault) {
+          // Track successful WebAuthn login
+          trackLoginAttempt('webauthn', 'success');
+          
           // Set the master key and vault
           masterKey.set(result.masterKey);
           encryptedVault.set(cachedVault);
@@ -195,11 +211,15 @@
             console.warn('Background sync failed:', e);
           }
         } else {
+          trackLoginAttempt('webauthn', 'failed_no_cached_vault');
           errorMessage = 'No cached vault found. Please login with password first to enable Face ID.';
           showPasswordForm = true;
           masterKey.set(null);
         }
       } else {
+        // Track failed WebAuthn attempt
+        trackLoginAttempt('webauthn', 'failed');
+        
         // Handle specific error cases
         if (result.error?.includes('Document not focused')) {
           errorMessage = 'Document not focused. Please click and try again.';
@@ -219,6 +239,7 @@
       }
     } catch (error) {
       console.error('WebAuthn authentication error:', error);
+      trackLoginAttempt('webauthn', 'error');
       errorMessage = 'Authentication error. Try again or use password.';
     } finally {
       isLoading = false;
@@ -232,8 +253,15 @@
     // Don't reset password retry count - it should persist across switches
   }
   
-  function wipeAllStorage() {
+  async function wipeAllStorage() {
     try {
+      // Log security event before wiping storage
+      const totalAttempts = webAuthnRetryCount + passwordRetryCount;
+      const trackedAttempts = getTrackedAttempts();
+      
+      console.log('Logging security event for suspicious activity...');
+      await logSecurityEvent(totalAttempts, trackedAttempts);
+      
       // Clear all localStorage
       localStorage.clear();
       
