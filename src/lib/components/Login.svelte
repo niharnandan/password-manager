@@ -6,9 +6,10 @@
     hasWebAuthnCredential, 
     registerWebAuthnCredential, 
     authenticateWithWebAuthn,
-    ensureUserGesture
+    ensureUserGesture,
+    clearWebAuthnCredential
   } from '$lib/utils/webauthn';
-  import { getCachedVault } from '$lib/utils/local-storage';
+  import { getCachedVault, clearCachedVault } from '$lib/utils/local-storage';
   import { get } from 'svelte/store';
   
   let password = '';
@@ -20,8 +21,16 @@
   let showPasswordForm = false;
   let autoWebAuthnTried = false;
   let isDocumentFocused = true;
-  let webAuthnRetryCount = 0;
-  const MAX_WEBAUTHN_RETRIES = 3;
+  // Initialize retry counts from localStorage or default to 0
+  let webAuthnRetryCount = typeof localStorage !== 'undefined' ? parseInt(localStorage.getItem('webauthn_retry_count') || '0', 10) : 0;
+  let passwordRetryCount = typeof localStorage !== 'undefined' ? parseInt(localStorage.getItem('password_retry_count') || '0', 10) : 0;
+  const MAX_RETRIES = 5;
+  
+  // Persist retry counts to localStorage
+  $: if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('webauthn_retry_count', webAuthnRetryCount.toString());
+    localStorage.setItem('password_retry_count', passwordRetryCount.toString());
+  }
   
   // Check if WebAuthn is supported and if user has a credential
   $: hasWebAuthn = isWebAuthnSupported() && hasWebAuthnCredential();
@@ -44,8 +53,8 @@
     
     if (hasWebAuthn && !autoWebAuthnTried && isDocumentFocused) {
       autoWebAuthnTried = true;
-      // Small delay to let the component render first
-      setTimeout(tryWebAuthnLogin, 100);
+      // Minimal delay to let the component render first
+      setTimeout(tryWebAuthnLogin, 50);
     } else if (!hasWebAuthn) {
       showPasswordForm = true;
     }
@@ -65,19 +74,62 @@
       // Always unlock vault from GitHub/localStorage
       const success = await unlockVault(password);
       if (!success) {
-        errorMessage = 'Invalid password or connection error';
-      } else if (enableWebAuthn && isWebAuthnSupported()) {
-        // Register WebAuthn credential after successful login
-        const currentMasterKey = get(masterKey);
-        if (currentMasterKey) {
-          const result = await registerWebAuthnCredential('user', currentMasterKey);
-          if (!result.success) {
-            console.warn('WebAuthn registration failed:', result.error);
+        passwordRetryCount++;
+        
+        // Check if we've exceeded retry limit for password attempts
+        if (passwordRetryCount >= MAX_RETRIES) {
+          errorMessage = 'Too many failed password attempts. All data will be wiped for security.';
+          isLoading = false;
+          setTimeout(() => {
+            wipeAllStorage();
+          }, 2000); // Give user time to read the message
+          return;
+        }
+        
+        if (passwordRetryCount >= MAX_RETRIES - 1) {
+          errorMessage = `Invalid password or connection error (${passwordRetryCount}/${MAX_RETRIES} attempts) - WARNING: One more failed attempt will wipe all data!`;
+        } else {
+          errorMessage = `Invalid password or connection error (${passwordRetryCount}/${MAX_RETRIES} attempts)`;
+        }
+      } else {
+        // Reset retry counts on successful login
+        passwordRetryCount = 0;
+        webAuthnRetryCount = 0;
+        // Clear persisted retry counts
+        if (typeof localStorage !== 'undefined') {
+          localStorage.removeItem('password_retry_count');
+          localStorage.removeItem('webauthn_retry_count');
+        }
+        
+        if (enableWebAuthn && isWebAuthnSupported()) {
+          // Register WebAuthn credential after successful login
+          const currentMasterKey = get(masterKey);
+          if (currentMasterKey) {
+            const result = await registerWebAuthnCredential('user', currentMasterKey);
+            if (!result.success) {
+              console.warn('WebAuthn registration failed:', result.error);
+            }
           }
         }
       }
     } catch (error) {
-      errorMessage = 'An error occurred';
+      passwordRetryCount++;
+      
+      // Check if we've exceeded retry limit for password attempts
+      if (passwordRetryCount >= MAX_RETRIES) {
+        errorMessage = 'Too many failed attempts. All data will be wiped for security.';
+        isLoading = false;
+        setTimeout(() => {
+          wipeAllStorage();
+        }, 2000);
+        return;
+      }
+      
+      if (passwordRetryCount >= MAX_RETRIES - 1) {
+        errorMessage = `An error occurred (${passwordRetryCount}/${MAX_RETRIES} attempts) - WARNING: One more failed attempt will wipe all data!`;
+      } else {
+        errorMessage = `An error occurred (${passwordRetryCount}/${MAX_RETRIES} attempts)`;
+      }
       console.error(error);
     } finally {
       isLoading = false;
@@ -98,10 +150,12 @@
     }
     
     // Check if we've exceeded retry limit
-    if (webAuthnRetryCount > MAX_WEBAUTHN_RETRIES) {
-      errorMessage = 'Too many attempts. Please use password instead.';
-      showPasswordForm = true;
+    if (webAuthnRetryCount >= MAX_RETRIES) {
+      errorMessage = 'Too many failed attempts. All data will be wiped for security.';
       isLoading = false;
+      setTimeout(() => {
+        wipeAllStorage();
+      }, 2000); // Give user time to read the message
       return;
     }
     
@@ -124,8 +178,14 @@
           encryptedVault.set(cachedVault);
           isAuthenticated.set(true);
           
-          // Reset retry count on success
+          // Reset retry counts on success
           webAuthnRetryCount = 0;
+          passwordRetryCount = 0;
+          // Clear persisted retry counts
+          if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem('webauthn_retry_count');
+            localStorage.removeItem('password_retry_count');
+          }
           
           // Try to sync in the background
           try {
@@ -150,7 +210,11 @@
           errorMessage = 'Face ID needs to be re-registered. Please login with password.';
           showPasswordForm = true;
         } else {
-          errorMessage = `${result.error || 'Face ID failed'}. Try again or use password.`;
+          if (webAuthnRetryCount >= MAX_RETRIES - 1) {
+            errorMessage = `${result.error || 'Face ID failed'} (${webAuthnRetryCount}/${MAX_RETRIES} attempts) - WARNING: One more failed attempt will wipe all data!`;
+          } else {
+            errorMessage = `${result.error || 'Face ID failed'} (${webAuthnRetryCount}/${MAX_RETRIES} attempts). Try again or use password.`;
+          }
         }
       }
     } catch (error) {
@@ -164,7 +228,42 @@
   function usePasswordInstead() {
     showPasswordForm = true;
     errorMessage = '';
-    webAuthnRetryCount = 0; // Reset retry count when switching to password
+    webAuthnRetryCount = 0; // Reset WebAuthn retry count when switching to password
+    // Don't reset password retry count - it should persist across switches
+  }
+  
+  function wipeAllStorage() {
+    try {
+      // Clear all localStorage
+      localStorage.clear();
+      
+      // Clear all sessionStorage
+      sessionStorage.clear();
+      
+      // Clear WebAuthn credentials
+      clearWebAuthnCredential();
+      
+      // Clear cached vault
+      clearCachedVault();
+      
+      // Reset all state
+      masterKey.set(null);
+      encryptedVault.set(null);
+      isAuthenticated.set(false);
+      
+      // Reset retry counts
+      webAuthnRetryCount = 0;
+      passwordRetryCount = 0;
+      
+      console.log('All storage wiped due to too many failed login attempts');
+      
+      // Reload the page to reset everything
+      window.location.reload();
+    } catch (error) {
+      console.error('Error wiping storage:', error);
+      // Force reload even if clearing fails
+      window.location.reload();
+    }
   }
   
   function handleOutsideClick(event: MouseEvent) {
@@ -199,7 +298,7 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
                 </svg>
               </div>
-              <p class="text-gray-600 dark:text-gray-300">Authenticating with Face ID...</p>
+              <p class="text-gray-600 dark:text-gray-300">Look at your device to authenticate</p>
             </div>
           {:else}
             <div class="flex flex-col items-center space-y-4">
@@ -208,12 +307,12 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
                 </svg>
               </div>
-              <p class="text-gray-600 dark:text-gray-300">Ready to unlock with Face ID</p>
+              <p class="text-gray-600 dark:text-gray-300">Tap below to unlock instantly</p>
             </div>
           {/if}
           
           {#if errorMessage}
-            <p class="text-red-500 text-sm">{errorMessage}</p>
+            <p class="text-red-500 text-sm {errorMessage.includes('WARNING') ? 'font-bold bg-red-50 dark:bg-red-900/20 p-2 rounded border border-red-200 dark:border-red-800' : ''}">{errorMessage}</p>
           {/if}
           
           <!-- Action Buttons -->
@@ -222,14 +321,14 @@
               <button 
                 type="button"
                 on:click={tryWebAuthnLogin}
-                disabled={webAuthnRetryCount >= MAX_WEBAUTHN_RETRIES}
+                disabled={webAuthnRetryCount >= MAX_RETRIES}
                 class="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 flex items-center justify-center"
               >
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
                 </svg>
-                {webAuthnRetryCount >= MAX_WEBAUTHN_RETRIES ? 'Too many attempts' : 
-                 webAuthnAttempts === 0 ? 'Use Face ID' : `Try Face ID Again (${webAuthnRetryCount}/${MAX_WEBAUTHN_RETRIES})`}
+                {webAuthnRetryCount >= MAX_RETRIES ? 'Too many attempts' : 
+                 webAuthnAttempts === 0 ? 'Use Face ID' : `Try Face ID Again (${webAuthnRetryCount}/${MAX_RETRIES})`}
               </button>
             {/if}
             
@@ -291,7 +390,7 @@
           {/if}
           
           {#if errorMessage}
-            <p class="text-red-500 text-sm">{errorMessage}</p>
+            <p class="text-red-500 text-sm {errorMessage.includes('WARNING') ? 'font-bold bg-red-50 dark:bg-red-900/20 p-2 rounded border border-red-200 dark:border-red-800' : ''}">{errorMessage}</p>
           {/if}
           
           <button 

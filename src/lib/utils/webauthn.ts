@@ -54,8 +54,8 @@ export async function registerWebAuthnCredential(
         },
         user: {
           id: crypto.getRandomValues(new Uint8Array(32)), // Use random bytes instead of username
-          name: "Password Manager User",
-          displayName: "Password Manager User",
+          name: "Password Manager",
+          displayName: "Password Manager",
         },
         pubKeyCredParams: [
           { alg: -7, type: "public-key" }, // ES256
@@ -63,11 +63,12 @@ export async function registerWebAuthnCredential(
         ],
         authenticatorSelection: {
           authenticatorAttachment: "platform",
-          userVerification: "preferred",
+          userVerification: "required", // Ensure biometric verification
           residentKey: "preferred", // Enable discoverable credentials
+          requireResidentKey: false, // Allow non-resident keys for broader compatibility
         },
         attestation: "direct",
-        timeout: 60000,
+        timeout: 30000, // Shorter timeout for faster UX
       },
     })) as PublicKeyCredential;
 
@@ -169,8 +170,8 @@ export async function authenticateWithWebAuthn(): Promise<{
             type: "public-key",
           },
         ],
-        userVerification: "preferred",
-        timeout: 60000,
+        userVerification: "required", // Direct biometric authentication
+        timeout: 30000, // Shorter timeout for faster UX
       },
     })) as PublicKeyCredential;
 
