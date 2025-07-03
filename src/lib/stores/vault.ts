@@ -1,26 +1,27 @@
 import { derived, writable, get } from 'svelte/store';
 import { browser } from '$app/environment';
-import { persistentStore } from '$lib/utils/persistent-store';
 import { 
   encrypt, 
   decrypt, 
   deriveKey, 
   generateSalt, 
   saltToString, 
-  stringToSalt, 
-  createVerificationObject, 
-  verifyPassword 
+  stringToSalt
 } from '$lib/utils/crypto';
 import { 
   uploadVaultToGitHub, 
-  downloadVaultFromGitHub, 
-  testGitHubConnection 
+  downloadVaultFromGitHub
 } from '$lib/utils/github-sync';
 import { 
   loadGitHubAuth, 
   getGitHubConfig, 
   isGitHubAuthenticated 
 } from '$lib/stores/github-auth';
+import { 
+  cacheVault, 
+  getCachedVault, 
+  clearCachedVault 
+} from '$lib/utils/local-storage';
 import type { PasswordEntry, PasswordVault, EncryptedVault } from '$lib/types/password';
 
 // Store for the master key (never persisted)
@@ -78,7 +79,13 @@ async function syncVaultToGitHub(): Promise<boolean> {
   const config = getGitHubConfig();
   const $encryptedVault = get(encryptedVault);
   
-  if (!config || !$encryptedVault) return false;
+  if (!config || !$encryptedVault) {
+    // If no GitHub config, at least cache locally
+    if ($encryptedVault) {
+      cacheVault($encryptedVault);
+    }
+    return false;
+  }
   
   syncStatus.update(s => ({ ...s, syncing: true, error: null }));
   
@@ -86,6 +93,8 @@ async function syncVaultToGitHub(): Promise<boolean> {
     const result = await uploadVaultToGitHub($encryptedVault, config);
     
     if (result.success) {
+      // Cache the vault locally after successful sync
+      cacheVault($encryptedVault);
       syncStatus.update(s => ({ 
         ...s, 
         syncing: false, 
@@ -94,6 +103,8 @@ async function syncVaultToGitHub(): Promise<boolean> {
       }));
       return true;
     } else {
+      // Even if GitHub sync fails, cache locally
+      cacheVault($encryptedVault);
       syncStatus.update(s => ({ 
         ...s, 
         syncing: false, 
@@ -102,6 +113,8 @@ async function syncVaultToGitHub(): Promise<boolean> {
       return false;
     }
   } catch (error) {
+    // Cache locally even if sync fails
+    cacheVault($encryptedVault);
     syncStatus.update(s => ({ 
       ...s, 
       syncing: false, 
@@ -111,11 +124,19 @@ async function syncVaultToGitHub(): Promise<boolean> {
   }
 }
 
-// Load vault from GitHub
+// Load vault from GitHub or localStorage
 async function loadVaultFromGitHub(): Promise<boolean> {
   const config = getGitHubConfig();
   
-  if (!config) return false;
+  if (!config) {
+    // Try to load from localStorage if GitHub not configured
+    const cachedVault = getCachedVault();
+    if (cachedVault) {
+      encryptedVault.set(cachedVault);
+      return true;
+    }
+    return false;
+  }
   
   syncStatus.update(s => ({ ...s, syncing: true, error: null }));
   
@@ -125,6 +146,8 @@ async function loadVaultFromGitHub(): Promise<boolean> {
     if (result.success && result.data) {
       // Update local vault with GitHub data
       encryptedVault.set(result.data);
+      // Cache the vault data locally
+      cacheVault(result.data);
       syncStatus.update(s => ({ 
         ...s, 
         syncing: false, 
@@ -133,6 +156,18 @@ async function loadVaultFromGitHub(): Promise<boolean> {
       }));
       return true;
     } else {
+      // If GitHub sync fails, try localStorage fallback
+      const cachedVault = getCachedVault();
+      if (cachedVault) {
+        encryptedVault.set(cachedVault);
+        syncStatus.update(s => ({ 
+          ...s, 
+          syncing: false, 
+          error: 'Using cached vault (offline)' 
+        }));
+        return true;
+      }
+      
       syncStatus.update(s => ({ 
         ...s, 
         syncing: false, 
@@ -141,6 +176,18 @@ async function loadVaultFromGitHub(): Promise<boolean> {
       return false;
     }
   } catch (error) {
+    // If network error, try localStorage fallback
+    const cachedVault = getCachedVault();
+    if (cachedVault) {
+      encryptedVault.set(cachedVault);
+      syncStatus.update(s => ({ 
+        ...s, 
+        syncing: false, 
+        error: 'Using cached vault (offline)' 
+      }));
+      return true;
+    }
+    
     syncStatus.update(s => ({ 
       ...s, 
       syncing: false, 
@@ -160,9 +207,6 @@ export function initializeVault(password: string): void {
     
     // Derive key from password
     const key = deriveKey(password, salt);
-    
-    // Create verification object
-    const verificationObj = createVerificationObject();
     
     // Create initial empty vault
     const emptyVault: PasswordVault = {
@@ -198,8 +242,21 @@ export function initializeVault(password: string): void {
 export async function unlockVault(password: string): Promise<boolean> {
   if (!browser) return false;
   
-  // Always load from GitHub - no local persistence
-  loadGitHubAuth(password);
+  // If password is empty, assume master key is already set (WebAuthn case)
+  if (!password && get(masterKey)) {
+    // Just try to load vault data, don't derive key
+    const loaded = await loadVaultFromGitHub();
+    if (loaded) {
+      isAuthenticated.set(true);
+      return true;
+    }
+    return false;
+  }
+  
+  // Normal password flow
+  if (password) {
+    loadGitHubAuth(password);
+  }
   const loaded = await loadVaultFromGitHub();
   if (!loaded) return false;
   
@@ -256,6 +313,13 @@ export function lockVault(): void {
   masterKey.set(null);
   encryptedVault.set(null);
   isAuthenticated.set(false);
+  // Note: We don't clear localStorage cache on lock - only on explicit logout
+}
+
+// Clear all data including cache (for logout)
+export function clearAllData(): void {
+  lockVault();
+  clearCachedVault();
 }
 
 // Add a password to the vault
@@ -287,11 +351,15 @@ export async function addPassword(entry: Omit<PasswordEntry, 'id' | 'created' | 
   const { ciphertext, nonce } = encrypt(JSON.stringify(updatedVault), $masterKey);
   
   // Update the encrypted vault
-  encryptedVault.set({
+  const newEncryptedVault = {
     ...$encryptedVault,
     ciphertext,
     nonce
-  });
+  };
+  encryptedVault.set(newEncryptedVault);
+  
+  // Always cache locally
+  cacheVault(newEncryptedVault);
   
   // Sync to GitHub if available
   if (get(isGitHubAuthenticated)) {
@@ -335,11 +403,15 @@ export async function updatePassword(id: string, updates: Partial<Omit<PasswordE
   const { ciphertext, nonce } = encrypt(JSON.stringify(updatedVault), $masterKey);
   
   // Update the encrypted vault
-  encryptedVault.set({
+  const newEncryptedVault = {
     ...$encryptedVault,
     ciphertext,
     nonce
-  });
+  };
+  encryptedVault.set(newEncryptedVault);
+  
+  // Always cache locally
+  cacheVault(newEncryptedVault);
   
   // Sync to GitHub if available
   if (get(isGitHubAuthenticated)) {
@@ -368,11 +440,15 @@ export async function deletePassword(id: string): Promise<void> {
   const { ciphertext, nonce } = encrypt(JSON.stringify(updatedVault), $masterKey);
   
   // Update the encrypted vault
-  encryptedVault.set({
+  const newEncryptedVault = {
     ...$encryptedVault,
     ciphertext,
     nonce
-  });
+  };
+  encryptedVault.set(newEncryptedVault);
+  
+  // Always cache locally
+  cacheVault(newEncryptedVault);
   
   // Sync to GitHub if available
   if (get(isGitHubAuthenticated)) {
@@ -401,11 +477,15 @@ export async function updateGlobalNotes(notes: string): Promise<void> {
   const { ciphertext, nonce } = encrypt(JSON.stringify(updatedVault), $masterKey);
   
   // Update the encrypted vault
-  encryptedVault.set({
+  const newEncryptedVault = {
     ...$encryptedVault,
     ciphertext,
     nonce
-  });
+  };
+  encryptedVault.set(newEncryptedVault);
+  
+  // Always cache locally
+  cacheVault(newEncryptedVault);
   
   // Sync to GitHub if available
   if (get(isGitHubAuthenticated)) {

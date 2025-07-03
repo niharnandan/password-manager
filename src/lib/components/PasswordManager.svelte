@@ -3,6 +3,7 @@
   import {
     vault,
     lockVault,
+    clearAllData,
     addPassword,
     updatePassword,
     deletePassword,
@@ -12,6 +13,7 @@
     unlockVault,
     syncStatus,
   } from "$lib/stores/vault";
+  import { clearWebAuthnCredential } from "$lib/utils/webauthn";
   import { isGitHubAuthenticated } from "$lib/stores/github-auth";
   import PasswordList from "./PasswordList.svelte";
   import PasswordForm from "./PasswordForm.svelte";
@@ -183,6 +185,12 @@
   function handleLogout() {
     lockVault();
   }
+  
+  // Handle complete logout (clear all data including cache)
+  function handleCompleteLogout() {
+    clearAllData();
+    clearWebAuthnCredential();
+  }
 
   // Export vault to file
   function handleExportVault() {
@@ -248,7 +256,7 @@
   }
 
   // Verify password and import vault
-  function confirmImport() {
+  async function confirmImport() {
     if (!importPassword) {
       importError = "Please enter your master password";
       return;
@@ -256,7 +264,8 @@
 
     try {
       // First verify the password is correct
-      if (unlockVault(importPassword)) {
+      const unlockSuccess = await unlockVault(importPassword);
+      if (unlockSuccess) {
         // Then import the vault data
         if (importVault(importFileContent)) {
           // Close the modal
