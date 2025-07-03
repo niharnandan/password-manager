@@ -10,7 +10,9 @@
     exportVault,
     importVault,
     unlockVault,
+    syncStatus,
   } from "$lib/stores/vault";
+  import { isGitHubAuthenticated } from "$lib/stores/github-auth";
   import PasswordList from "./PasswordList.svelte";
   import PasswordForm from "./PasswordForm.svelte";
   import CategoryTree from "./CategoryTree.svelte";
@@ -39,6 +41,9 @@
   // Mobile drawer state
   let drawerOpen: boolean = false;
 
+  // Password visibility state
+  let showPassword: boolean = false;
+
   // Toggle drawer
   function toggleDrawer() {
     drawerOpen = !drawerOpen;
@@ -49,7 +54,12 @@
     drawerOpen = false;
   }
 
-  // Derived state for filtering passwords
+  // Toggle password visibility
+  function togglePasswordVisibility() {
+    showPassword = !showPassword;
+  }
+
+  // Derived state for filtering and sorting passwords
   $: filteredPasswords =
     $vault?.vault?.filter((entry) => {
       const matchesCategory =
@@ -61,11 +71,11 @@
         entry.url.toLowerCase().includes(searchQuery.toLowerCase());
 
       return matchesCategory && matchesSearch;
-    }) || [];
+    }).sort((a, b) => a.title.toLowerCase().localeCompare(b.title.toLowerCase())) || [];
 
-  // Extract all unique categories for the sidebar
+  // Extract all unique categories for the sidebar - sorted alphabetically (case-insensitive)
   $: categories = $vault?.vault
-    ? Array.from(new Set($vault.vault.map((entry) => entry.category)))
+    ? Array.from(new Set($vault.vault.map((entry) => entry.category))).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
     : [];
 
   // Handle category selection
@@ -92,6 +102,7 @@
     showingNotes = false;
     isAddingPassword = false;
     isEditingPassword = false;
+    showPassword = false; // Reset password visibility when selecting a new password
   }
 
   // Start adding a new password
@@ -123,8 +134,8 @@
     notesEditContent = $vault?.globalNotes || "";
   }
 
-  function saveNotes() {
-    updateGlobalNotes(notesEditContent);
+  async function saveNotes() {
+    await updateGlobalNotes(notesEditContent);
     isEditingNotes = false;
   }
 
@@ -134,11 +145,11 @@
   }
 
   // Handle password form submission
-  function handlePasswordSubmit(event: CustomEvent) {
+  async function handlePasswordSubmit(event: CustomEvent) {
     const passwordData = event.detail;
 
     if (isAddingPassword) {
-      addPassword({
+      await addPassword({
         title: passwordData.title,
         username: passwordData.username,
         password: passwordData.password,
@@ -148,7 +159,7 @@
       });
       isAddingPassword = false;
     } else if (isEditingPassword && selectedPasswordId) {
-      updatePassword(selectedPasswordId, {
+      await updatePassword(selectedPasswordId, {
         title: passwordData.title,
         username: passwordData.username,
         password: passwordData.password,
@@ -161,9 +172,9 @@
   }
 
   // Handle password deletion
-  function handleDeletePassword() {
+  async function handleDeletePassword() {
     if (selectedPasswordId) {
-      deletePassword(selectedPasswordId);
+      await deletePassword(selectedPasswordId);
       selectedPasswordId = null;
     }
   }
@@ -311,6 +322,28 @@
           </h1>
         </div>
         <div class="flex items-center space-x-4">
+          <!-- Add New button -->
+          <button
+            on:click={startAddPassword}
+            class="hidden sm:inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4 mr-1"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+              />
+            </svg>
+            Add New
+          </button>
+
           <div class="relative hidden sm:block">
             <input
               type="search"
@@ -336,21 +369,34 @@
             </div>
           </div>
 
-          <!-- Import/Export buttons -->
-          <div class="flex space-x-2">
-            <button
-              on:click={handleExportVault}
-              class="hidden sm:inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-            >
-              Export
-            </button>
-            <button
-              on:click={startImport}
-              class="hidden sm:inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500"
-            >
-              Import
-            </button>
-          </div>
+          <!-- Sync Status -->
+          {#if $isGitHubAuthenticated}
+            <div class="hidden sm:flex items-center space-x-2">
+              {#if $syncStatus.syncing}
+                <div class="flex items-center text-blue-600 text-sm">
+                  <svg class="animate-spin h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Syncing...
+                </div>
+              {:else if $syncStatus.error}
+                <div class="flex items-center text-red-600 text-sm" title={$syncStatus.error}>
+                  <svg class="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.96-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                  Sync error
+                </div>
+              {:else if $syncStatus.lastSync}
+                <div class="flex items-center text-green-600 text-sm">
+                  <svg class="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  Synced
+                </div>
+              {/if}
+            </div>
+          {/if}
 
           <button
             on:click={handleLogout}
@@ -387,20 +433,57 @@
             </svg>
           </div>
         </div>
-        <!-- Mobile import/export buttons -->
-        <div class="flex space-x-2 mt-2">
+        <!-- Mobile buttons -->
+        <div class="flex items-center justify-between mt-2">
           <button
-            on:click={handleExportVault}
-            class="flex-1 inline-flex justify-center items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+            on:click={startAddPassword}
+            class="inline-flex justify-center items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            Export
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4 mr-1"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+              />
+            </svg>
+            Add New
           </button>
-          <button
-            on:click={startImport}
-            class="flex-1 inline-flex justify-center items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500"
-          >
-            Import
-          </button>
+          
+          <!-- Mobile Sync Status -->
+          {#if $isGitHubAuthenticated}
+            <div class="flex items-center">
+              {#if $syncStatus.syncing}
+                <div class="flex items-center text-blue-600 text-sm">
+                  <svg class="animate-spin h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Syncing...
+                </div>
+              {:else if $syncStatus.error}
+                <div class="flex items-center text-red-600 text-sm">
+                  <svg class="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.96-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                  Error
+                </div>
+              {:else if $syncStatus.lastSync}
+                <div class="flex items-center text-green-600 text-sm">
+                  <svg class="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  Synced
+                </div>
+              {/if}
+            </div>
+          {/if}
         </div>
       </div>
     </div>
@@ -501,16 +584,10 @@
         class="bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto w-1/2 md:w-1/3"
       >
         <div class="p-4">
-          <div class="flex justify-between items-center mb-4">
+          <div class="mb-4">
             <h2 class="text-lg font-medium text-gray-900 dark:text-white">
               {selectedCategory === "all" ? "All Passwords" : selectedCategory}
             </h2>
-            <button
-              on:click={startAddPassword}
-              class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              Add New
-            </button>
           </div>
 
           <PasswordList
@@ -623,29 +700,81 @@
                     Password
                   </h3>
                   <div class="mt-1 flex items-center">
-                    <p class="text-sm text-gray-900 dark:text-white">
-                      ••••••••••••
+                    <p class="text-sm text-gray-900 dark:text-white break-all">
+                      {showPassword ? entry.password : "••••••••••••"}
                     </p>
-                    <!-- svelte-ignore a11y_consider_explicit_label -->
-                    <button
-                      class="ml-2 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
-                      on:click={() =>
-                        navigator.clipboard.writeText(entry.password)}
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-5 w-5"
-                        viewBox="0 0 20 20"
-                        fill="currentColor"
+                    <div class="ml-2 flex space-x-1">
+                      <!-- Eye icon to toggle password visibility -->
+                      <!-- svelte-ignore a11y_consider_explicit_label -->
+                      <button
+                        class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 flex-shrink-0"
+                        on:click={togglePasswordVisibility}
+                        title={showPassword ? "Hide password" : "Show password"}
                       >
-                        <path
-                          d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z"
-                        />
-                        <path
-                          d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z"
-                        />
-                      </svg>
-                    </button>
+                        {#if showPassword}
+                          <!-- Eye slash (hide) icon -->
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-5 w-5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"
+                            />
+                          </svg>
+                        {:else}
+                          <!-- Eye (show) icon -->
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-5 w-5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                            />
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                            />
+                          </svg>
+                        {/if}
+                      </button>
+                      
+                      <!-- Copy button -->
+                      <!-- svelte-ignore a11y_consider_explicit_label -->
+                      <button
+                        class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 flex-shrink-0"
+                        on:click={() =>
+                          navigator.clipboard.writeText(entry.password)}
+                        title="Copy password"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          class="h-5 w-5"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
+                          <path
+                            d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z"
+                          />
+                          <path
+                            d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z"
+                          />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
 

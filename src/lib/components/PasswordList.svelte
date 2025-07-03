@@ -43,29 +43,29 @@
 </script>
 
 {#if passwords.length === 0}
-  <div class="text-center py-10">
+  <div class="text-center py-8">
     <p class="text-gray-500 dark:text-gray-400">No passwords found</p>
   </div>
 {:else if isMobile}
   <!-- Mobile: Simple alphabetical list -->
-  <ul class="space-y-1">
+  <ul class="space-y-0">
     {#each sortedPasswords as entry}
       <li>
         <button
           on:click={() => onSelectPassword(entry.id)}
-          class="w-full text-left px-3 py-2 rounded-md text-sm flex items-center {selectedPasswordId ===
+          class="w-full text-left px-2 py-1.5 rounded text-sm flex items-center {selectedPasswordId ===
           entry.id
             ? 'bg-blue-50 text-blue-600 dark:bg-blue-900 dark:text-blue-200'
             : 'text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700'}"
         >
           <div
-            class="mr-3 flex-shrink-0 h-8 w-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-600 dark:text-gray-300"
+            class="mr-2 flex-shrink-0 h-6 w-6 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-600 dark:text-gray-300 text-xs"
           >
             {entry.title.charAt(0).toUpperCase()}
           </div>
-          <div>
-            <div class="font-medium">{entry.title}</div>
-            <div class="text-xs text-gray-500 dark:text-gray-400">
+          <div class="min-w-0 flex-1">
+            <div class="font-medium truncate">{entry.title}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
               {entry.username}
             </div>
           </div>
@@ -74,40 +74,42 @@
     {/each}
   </ul>
 {:else}
-  <!-- Desktop: Grouped by first letter -->
-  <div class="space-y-6">
+  <!-- Desktop: Grouped by first letter with left marker -->
+  <div class="space-y-3">
     {#each Object.entries(groupedPasswords) as [letter, entries]}
-      <div>
-        <h3
-          class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2"
-        >
-          {letter}
-        </h3>
-        <ul class="space-y-1">
-          {#each entries as entry}
-            <li>
-              <button
-                on:click={() => onSelectPassword(entry.id)}
-                class="w-full text-left px-3 py-2 rounded-md text-sm flex items-center {selectedPasswordId ===
-                entry.id
-                  ? 'bg-blue-50 text-blue-600 dark:bg-blue-900 dark:text-blue-200'
-                  : 'text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700'}"
-              >
-                <div
-                  class="mr-3 flex-shrink-0 h-8 w-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-600 dark:text-gray-300"
+      <div class="flex">
+        <!-- Letter marker column -->
+        <div class="flex-shrink-0 w-4 pt-1">
+          <div
+            class="text-sm font-bold text-gray-600 dark:text-gray-300 uppercase"
+          >
+            {letter}
+          </div>
+        </div>
+        
+        <!-- Password entries column -->
+        <div class="flex-1 ml-2">
+          <ul class="space-y-0">
+            {#each entries as entry}
+              <li>
+                <button
+                  on:click={() => onSelectPassword(entry.id)}
+                  class="w-full text-left px-2 py-1.5 rounded text-sm flex items-center {selectedPasswordId ===
+                  entry.id
+                    ? 'bg-blue-50 text-blue-600 dark:bg-blue-900 dark:text-blue-200'
+                    : 'text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700'}"
                 >
-                  {entry.title.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <div class="font-medium">{entry.title}</div>
-                  <div class="text-xs text-gray-500 dark:text-gray-400">
-                    {entry.username}
+                  <div class="min-w-0 flex-1">
+                    <div class="font-medium truncate">{entry.title}</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
+                      {entry.username}
+                    </div>
                   </div>
-                </div>
-              </button>
-            </li>
-          {/each}
-        </ul>
+                </button>
+              </li>
+            {/each}
+          </ul>
+        </div>
       </div>
     {/each}
   </div>

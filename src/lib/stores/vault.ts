@@ -11,6 +11,16 @@ import {
   createVerificationObject, 
   verifyPassword 
 } from '$lib/utils/crypto';
+import { 
+  uploadVaultToGitHub, 
+  downloadVaultFromGitHub, 
+  testGitHubConnection 
+} from '$lib/utils/github-sync';
+import { 
+  loadGitHubAuth, 
+  getGitHubConfig, 
+  isGitHubAuthenticated 
+} from '$lib/stores/github-auth';
 import type { PasswordEntry, PasswordVault, EncryptedVault } from '$lib/types/password';
 
 // Store for the master key (never persisted)
@@ -19,8 +29,19 @@ export const masterKey = writable<Uint8Array | null>(null);
 // Store for authentication state
 export const isAuthenticated = writable<boolean>(false);
 
-// Store for the encrypted vault (persisted to localStorage)
-export const encryptedVault = persistentStore<EncryptedVault | null>('vault', null);
+// Store for sync status
+export const syncStatus = writable<{
+  syncing: boolean;
+  lastSync: Date | null;
+  error: string | null;
+}>({
+  syncing: false,
+  lastSync: null,
+  error: null
+});
+
+// Store for the encrypted vault (in memory only - no persistence)
+export const encryptedVault = writable<EncryptedVault | null>(null);
 
 // Derived store for the decrypted vault (computed from masterKey and encryptedVault)
 export const vault = derived(
@@ -51,6 +72,83 @@ export const vault = derived(
   },
   null as PasswordVault | null
 );
+
+// Sync vault to GitHub
+async function syncVaultToGitHub(): Promise<boolean> {
+  const config = getGitHubConfig();
+  const $encryptedVault = get(encryptedVault);
+  
+  if (!config || !$encryptedVault) return false;
+  
+  syncStatus.update(s => ({ ...s, syncing: true, error: null }));
+  
+  try {
+    const result = await uploadVaultToGitHub($encryptedVault, config);
+    
+    if (result.success) {
+      syncStatus.update(s => ({ 
+        ...s, 
+        syncing: false, 
+        lastSync: new Date(), 
+        error: null 
+      }));
+      return true;
+    } else {
+      syncStatus.update(s => ({ 
+        ...s, 
+        syncing: false, 
+        error: result.error || 'Upload failed' 
+      }));
+      return false;
+    }
+  } catch (error) {
+    syncStatus.update(s => ({ 
+      ...s, 
+      syncing: false, 
+      error: `Sync error: ${error instanceof Error ? error.message : 'Unknown error'}` 
+    }));
+    return false;
+  }
+}
+
+// Load vault from GitHub
+async function loadVaultFromGitHub(): Promise<boolean> {
+  const config = getGitHubConfig();
+  
+  if (!config) return false;
+  
+  syncStatus.update(s => ({ ...s, syncing: true, error: null }));
+  
+  try {
+    const result = await downloadVaultFromGitHub(config);
+    
+    if (result.success && result.data) {
+      // Update local vault with GitHub data
+      encryptedVault.set(result.data);
+      syncStatus.update(s => ({ 
+        ...s, 
+        syncing: false, 
+        lastSync: new Date(), 
+        error: null 
+      }));
+      return true;
+    } else {
+      syncStatus.update(s => ({ 
+        ...s, 
+        syncing: false, 
+        error: result.error || 'Download failed' 
+      }));
+      return false;
+    }
+  } catch (error) {
+    syncStatus.update(s => ({ 
+      ...s, 
+      syncing: false, 
+      error: `Load error: ${error instanceof Error ? error.message : 'Unknown error'}` 
+    }));
+    return false;
+  }
+}
 
 // Initialize a new vault with master password
 export function initializeVault(password: string): void {
@@ -97,21 +195,27 @@ export function initializeVault(password: string): void {
 }
 
 // Unlock the vault with master password
-export function unlockVault(password: string): boolean {
+export async function unlockVault(password: string): Promise<boolean> {
   if (!browser) return false;
   
-  const $encryptedVault = get(encryptedVault);
-  if (!$encryptedVault) return false;
+  // Always load from GitHub - no local persistence
+  loadGitHubAuth(password);
+  const loaded = await loadVaultFromGitHub();
+  if (!loaded) return false;
+  
+  // Get the (possibly updated) encrypted vault
+  const currentEncryptedVault = get(encryptedVault);
+  if (!currentEncryptedVault) return false;
   
   try {
     // Convert salt string back to Uint8Array
-    const salt = stringToSalt($encryptedVault.salt);
+    const salt = stringToSalt(currentEncryptedVault.salt);
     
     // Derive key from password and salt
     const key = deriveKey(password, salt);
     
     // Attempt to decrypt the vault
-    const decrypted = decrypt($encryptedVault.ciphertext, $encryptedVault.nonce, key);
+    const decrypted = decrypt(currentEncryptedVault.ciphertext, currentEncryptedVault.nonce, key);
     
     // If decryption fails, return false
     if (!decrypted) return false;
@@ -129,6 +233,15 @@ export function unlockVault(password: string): boolean {
       masterKey.set(key);
       isAuthenticated.set(true);
       
+      // Load GitHub authentication if available
+      loadGitHubAuth(password);
+      
+      // Try to sync with GitHub if auth is available
+      if (get(isGitHubAuthenticated)) {
+        // Don't wait for sync to complete - do it in background
+        loadVaultFromGitHub().catch(console.error);
+      }
+      
       return true;
     } catch (e) {
       return false;
@@ -138,14 +251,15 @@ export function unlockVault(password: string): boolean {
   }
 }
 
-// Lock the vault (clear the key from memory)
+// Lock the vault (clear everything from memory)
 export function lockVault(): void {
   masterKey.set(null);
+  encryptedVault.set(null);
   isAuthenticated.set(false);
 }
 
 // Add a password to the vault
-export function addPassword(entry: Omit<PasswordEntry, 'id' | 'created' | 'modified'>): void {
+export async function addPassword(entry: Omit<PasswordEntry, 'id' | 'created' | 'modified'>): Promise<void> {
   const $vault = get(vault);
   if (!browser || !$vault) return;
   
@@ -178,10 +292,15 @@ export function addPassword(entry: Omit<PasswordEntry, 'id' | 'created' | 'modif
     ciphertext,
     nonce
   });
+  
+  // Sync to GitHub if available
+  if (get(isGitHubAuthenticated)) {
+    syncVaultToGitHub().catch(console.error);
+  }
 }
 
 // Update a password in the vault
-export function updatePassword(id: string, updates: Partial<Omit<PasswordEntry, 'id' | 'created'>>): void {
+export async function updatePassword(id: string, updates: Partial<Omit<PasswordEntry, 'id' | 'created'>>): Promise<void> {
   const $vault = get(vault);
   if (!browser || !$vault) return;
   
@@ -221,10 +340,15 @@ export function updatePassword(id: string, updates: Partial<Omit<PasswordEntry, 
     ciphertext,
     nonce
   });
+  
+  // Sync to GitHub if available
+  if (get(isGitHubAuthenticated)) {
+    syncVaultToGitHub().catch(console.error);
+  }
 }
 
 // Delete a password from the vault
-export function deletePassword(id: string): void {
+export async function deletePassword(id: string): Promise<void> {
   const $vault = get(vault);
   if (!browser || !$vault) return;
   
@@ -249,10 +373,15 @@ export function deletePassword(id: string): void {
     ciphertext,
     nonce
   });
+  
+  // Sync to GitHub if available
+  if (get(isGitHubAuthenticated)) {
+    syncVaultToGitHub().catch(console.error);
+  }
 }
 
 // Update global notes
-export function updateGlobalNotes(notes: string): void {
+export async function updateGlobalNotes(notes: string): Promise<void> {
   const $vault = get(vault);
   if (!browser || !$vault) return;
   
@@ -277,6 +406,11 @@ export function updateGlobalNotes(notes: string): void {
     ciphertext,
     nonce
   });
+  
+  // Sync to GitHub if available
+  if (get(isGitHubAuthenticated)) {
+    syncVaultToGitHub().catch(console.error);
+  }
 }
 
 // Export entire vault (for GitHub backup)
@@ -300,3 +434,6 @@ export function importVault(vaultData: string): boolean {
     return false;
   }
 }
+
+// Auto-sync is enabled by default
+// All vault changes automatically sync to GitHub when authenticated

@@ -10,8 +10,8 @@
     // Parse categories to create a tree structure
     $: categoryTree = buildCategoryTree(categories);
     
-    // Root categories (top level)
-    $: rootCategories = Object.keys(categoryTree).filter(cat => !cat.includes('/'));
+    // Root categories (top level) - sorted alphabetically (case-insensitive)
+    $: rootCategories = Object.keys(categoryTree).filter(cat => !cat.includes('/')).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
     
     function buildCategoryTree(categories: string[]) {
       const tree: {[key: string]: string[]} = {};
@@ -56,7 +56,7 @@
           }
         });
       
-      return directChildren.sort();
+      return directChildren.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
     }
   </script>
   
