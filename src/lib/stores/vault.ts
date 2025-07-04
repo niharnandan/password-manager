@@ -324,8 +324,8 @@ export async function unlockVault(password: string): Promise<boolean> {
 
       // Try to sync with GitHub if auth is available
       if (get(isGitHubAuthenticated)) {
-        // Don't wait for sync to complete - do it in background
-        loadVaultFromGitHub().catch(console.error);
+        // Upload local changes to GitHub instead of downloading
+        syncVaultToGitHub().catch(console.error);
       }
 
       return true;
