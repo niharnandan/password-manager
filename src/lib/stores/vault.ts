@@ -561,5 +561,8 @@ export function importVault(vaultData: string): boolean {
   }
 }
 
+// Export sync functions for manual sync
+export { loadVaultFromGitHub, syncVaultToGitHub };
+
 // Auto-sync is enabled by default
 // All vault changes automatically sync to GitHub when authenticated

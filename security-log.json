@@ -36,8 +36,8 @@
           "architecture": "arm",
           "bitness": "64",
           "brands": [
-            {"brand": "Safari", "version": "17"},
-            {"brand": "WebKit", "version": "605"}
+            { "brand": "Safari", "version": "17" },
+            { "brand": "WebKit", "version": "605" }
           ],
           "mobile": true,
           "platform": "iOS",
