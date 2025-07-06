@@ -1,0 +1,101 @@
+{
+  "securityEvents": [
+    {
+      "timestamp": "2024-01-15T14:30:25.123Z",
+      "eventType": "FAILED_LOGIN_THRESHOLD_EXCEEDED",
+      "attemptsCount": 5,
+      "device": {
+        "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1",
+        "platform": "iPhone",
+        "vendor": "Apple Computer, Inc.",
+        "language": "en-US",
+        "languages": ["en-US", "en"],
+        "cookieEnabled": true,
+        "doNotTrack": null,
+        "hardwareConcurrency": 6,
+        "maxTouchPoints": 5,
+        "onLine": true
+      },
+      "browser": {
+        "name": "Safari",
+        "version": "17.1",
+        "engine": "WebKit",
+        "isWebAuthnSupported": true,
+        "viewportWidth": 390,
+        "viewportHeight": 844,
+        "screenWidth": 390,
+        "screenHeight": 844,
+        "colorDepth": 24,
+        "pixelDepth": 24,
+        "timezone": "America/New_York",
+        "timezoneOffset": -300
+      },
+      "network": {
+        "ipAddress": "192.168.1.100",
+        "userAgentClientHints": {
+          "architecture": "arm",
+          "bitness": "64",
+          "brands": [
+            { "brand": "Safari", "version": "17" },
+            { "brand": "WebKit", "version": "605" }
+          ],
+          "mobile": true,
+          "platform": "iOS",
+          "platformVersion": "17.1"
+        },
+        "effectiveType": "4g",
+        "downlink": 10,
+        "rtt": 50
+      },
+      "session": {
+        "referrer": "https://example.com/login",
+        "origin": "https://password-manager.example.com",
+        "sessionDuration": 450000,
+        "previousAttempts": [
+          {
+            "timestamp": "2024-01-15T14:25:10.456Z",
+            "method": "password",
+            "result": "failed"
+          },
+          {
+            "timestamp": "2024-01-15T14:26:15.789Z",
+            "method": "webauthn",
+            "result": "failed"
+          },
+          {
+            "timestamp": "2024-01-15T14:27:20.123Z",
+            "method": "password",
+            "result": "failed"
+          },
+          {
+            "timestamp": "2024-01-15T14:28:25.456Z",
+            "method": "webauthn",
+            "result": "failed"
+          },
+          {
+            "timestamp": "2024-01-15T14:30:25.123Z",
+            "method": "password",
+            "result": "failed_threshold_exceeded"
+          }
+        ]
+      },
+      "location": {
+        "url": "https://password-manager.example.com/",
+        "hostname": "password-manager.example.com",
+        "pathname": "/",
+        "protocol": "https:",
+        "port": "443"
+      },
+      "security": {
+        "storageWiped": true,
+        "webAuthnCredentialsCleared": true,
+        "sessionTerminated": true
+      }
+    }
+  ],
+  "metadata": {
+    "version": "1.0",
+    "lastUpdated": "2024-01-15T14:30:25.123Z",
+    "totalEvents": 1
+  }
+}
