@@ -41,6 +41,18 @@
   function togglePasswordVisibility() {
     showPassword = !showPassword;
   }
+
+  // Copy password to clipboard
+  let passwordCopied = false;
+  async function copyPassword() {
+    if (formData.password) {
+      await navigator.clipboard.writeText(formData.password);
+      passwordCopied = true;
+      setTimeout(() => {
+        passwordCopied = false;
+      }, 2000);
+    }
+  }
 </script>
 
 <form on:submit|preventDefault={handleSubmit} class="space-y-4 animate-fade-in">
@@ -85,13 +97,15 @@
         type={showPassword ? "text" : "password"}
         bind:value={formData.password}
         required
-        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-20"
+        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-32"
       />
-      <div class="absolute inset-y-0 right-0 flex items-center">
+      <div class="absolute inset-y-0 right-0 flex items-center gap-1">
+        <!-- Eye icon - toggle visibility -->
         <button
           type="button"
           on:click={togglePasswordVisibility}
-          class="p-1 mr-1 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
+          class="p-1 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 transition-colors duration-200"
+          title={showPassword ? "Hide password" : "Show password"}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -118,10 +132,44 @@
             {/if}
           </svg>
         </button>
+
+        <!-- Copy button -->
+        <button
+          type="button"
+          on:click={copyPassword}
+          disabled={!formData.password}
+          class="p-1 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200"
+          title={passwordCopied ? "Copied!" : "Copy password"}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+          >
+            {#if passwordCopied}
+              <!-- Checkmark icon -->
+              <path
+                fill-rule="evenodd"
+                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                clip-rule="evenodd"
+                class="text-green-500"
+              />
+            {:else}
+              <!-- Clipboard icon -->
+              <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
+              <path
+                d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z"
+              />
+            {/if}
+          </svg>
+        </button>
+
+        <!-- Generate button -->
         <button
           type="button"
           on:click={generatePassword}
-          class="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500 mr-2"
+          class="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 transition-all duration-200 mr-2"
         >
           Generate
         </button>

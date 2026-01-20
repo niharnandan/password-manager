@@ -34,9 +34,7 @@ src/
 │   │   ├── Login.svelte
 │   │   ├── PasswordManager.svelte
 │   │   ├── PasswordList.svelte
-│   │   ├── PasswordForm.svelte
-│   │   ├── CategoryTree.svelte
-│   │   └── CategoryItem.svelte
+│   │   └── PasswordForm.svelte
 │   ├── stores/           # Svelte stores (state management)
 │   │   ├── vault.ts      # Core vault state & operations
 │   │   ├── auth.ts       # Authentication state
@@ -52,6 +50,7 @@ src/
 ├── routes/
 │   ├── +layout.svelte    # Root layout
 │   └── +page.svelte      # Main page
+├── app.css               # Global styles and animations
 └── app.d.ts              # Global type definitions
 ```
 
@@ -65,7 +64,29 @@ src/
 | `src/lib/utils/security-monitor.ts` | Failed login tracking, security event logging |
 | `src/lib/types/password.ts` | TypeScript interfaces for vault data |
 | `src/lib/components/Login.svelte` | Login flow with WebAuthn & password |
-| `src/lib/components/PasswordManager.svelte` | Main password management UI |
+| `src/lib/components/PasswordManager.svelte` | Main password management UI (2-column layout) |
+| `src/lib/components/PasswordList.svelte` | Alphabetically grouped password list with animations |
+| `src/lib/components/PasswordForm.svelte` | Password add/edit form with copy functionality |
+| `src/app.css` | Global animations and enhanced color styles |
+
+### UI Architecture
+
+**Layout**: 2-column design (simplified from previous 3-column)
+- **Left Panel (40% on desktop)**: Alphabetically grouped password list with sticky letter headers
+- **Right Panel (60% on desktop)**: Password details/form view
+- **Mobile**: Full-width stacked layout
+
+**Design System**:
+- **Colors**: Slate-based palette (warmer than gray) with enhanced contrast
+- **Shadows**: Multi-layered (`shadow-sm`, `shadow-md`, `shadow-lg`) with ring borders
+- **Animations**: Smooth transitions (200-300ms) with stagger effects on list items
+- **Interactions**: Hover shadows, active scale effects, focus rings with offsets
+
+**Password List Features**:
+- Alphabetical grouping (A-Z, with # for special characters)
+- Sticky letter headers for easy navigation
+- Staggered entrance animations (50ms delay per group)
+- Search-based filtering (no categories)
 
 ### Data Flow
 
@@ -153,7 +174,7 @@ export function encrypt(data: string, key: Uint8Array): { ciphertext: string; no
 
   // 4. Reactive statements
   $: filteredPasswords = $vault?.vault?.filter(entry =>
-    entry.category === selectedCategory
+    entry.title.toLowerCase().includes(searchQuery.toLowerCase())
   ) || [];
 
   // 5. Lifecycle hooks
@@ -298,6 +319,140 @@ VITE_GITHUB_PAT=your_personal_access_token
 your-private-repo/
 ├── vault.json        # Encrypted vault data
 └── security-log.json # Security event logs (optional)
+```
+
+## Animations & Enhanced UI
+
+The app features smooth, professional animations and an enhanced color palette defined in `src/app.css`.
+
+### Custom Animations
+
+```css
+/* Keyframe animations */
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Utility classes */
+.animate-slide-in {
+  animation: slideInRight 0.3s ease-out;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+```
+
+### Animation Usage
+
+**Component Entrance**:
+```svelte
+<!-- Login form slides in -->
+<form class="space-y-6 animate-slide-in">
+
+<!-- Password list fades in -->
+<div class="animate-fade-in">
+
+<!-- Staggered list animation -->
+{#each letters as letter, i}
+  <div class="animate-slide-in" style="animation-delay: {i * 50}ms;">
+{/each}
+```
+
+**Interactive Elements**:
+```svelte
+<!-- Buttons with hover/active effects -->
+<button class="transition-all duration-200 ease-in-out
+               hover:shadow-md active:scale-[0.98]
+               focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+
+<!-- Cards with hover shadow -->
+<div class="shadow-sm hover:shadow-md transition-shadow duration-300">
+```
+
+### Enhanced Color Palette
+
+**Backgrounds**:
+- `slate-50` instead of `gray-100` (warmer tone)
+- `slate-100/200` for secondary backgrounds
+- Ring borders: `ring-1 ring-gray-900/5` for subtle depth
+
+**Shadows & Depth**:
+```css
+shadow-sm       /* Subtle */
+shadow-md       /* Default cards */
+shadow-lg       /* Elevated elements */
+shadow-2xl      /* Modals */
+```
+
+**Focus States**:
+```svelte
+focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+```
+
+**Transitions**:
+- All interactive elements: `transition-all duration-200 ease-in-out`
+- Shadows: `transition-shadow duration-300`
+- Colors: `transition-colors duration-200`
+
+### Global Styles (src/app.css)
+
+```css
+/* Smooth scrolling */
+* { scroll-behavior: smooth; }
+
+/* Enhanced focus states */
+*:focus-visible {
+  outline: 2px solid rgb(59 130 246 / 0.5);
+  outline-offset: 2px;
+}
+
+/* Auto-transitions on interactive elements */
+button, a, input, textarea, select {
+  transition-property: color, background-color, border-color,
+                       text-decoration-color, fill, stroke,
+                       opacity, box-shadow, transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 200ms;
+}
+```
+
+### Copy Button Pattern (PasswordForm)
+
+Shows how to implement copy-to-clipboard with visual feedback:
+
+```typescript
+let passwordCopied = false;
+
+async function copyPassword() {
+  if (formData.password) {
+    await navigator.clipboard.writeText(formData.password);
+    passwordCopied = true;
+    setTimeout(() => {
+      passwordCopied = false;
+    }, 2000);
+  }
+}
+```
+
+```svelte
+<button
+  on:click={copyPassword}
+  disabled={!formData.password}
+  title={passwordCopied ? "Copied!" : "Copy password"}
+>
+  {#if passwordCopied}
+    <!-- Green checkmark -->
+  {:else}
+    <!-- Clipboard icon -->
+  {/if}
+</button>
 ```
 
 ## Component Patterns
@@ -495,14 +650,19 @@ interface PasswordEntry {
   username: string;
   password: string;
   url: string;
-  category: string;
   notes: string;
   created: string;   // ISO date string
   modified: string;  // ISO date string
 }
 
+// Legacy type for migration purposes
+interface LegacyPasswordEntry extends PasswordEntry {
+  category?: string;
+}
+
 interface PasswordVault {
   version: string;
+  vaultVersion?: number;  // Data schema version for migrations (current: 2)
   vault: PasswordEntry[];
   globalNotes: string;
   verification: {
@@ -531,4 +691,81 @@ export const syncStatus = writable<{
   lastSync: Date | null;
   error: string | null;
 }>();
+```
+
+## Vault Migrations
+
+The app uses a versioned data schema to handle breaking changes to the vault structure. When the vault format changes, a migration runs automatically on unlock.
+
+### Current Version: 2
+
+**Migration History**:
+- **v1 → v2**: Removed `category` field from `PasswordEntry` (simplified UI to search-only)
+
+### Migration Implementation (src/lib/stores/vault.ts:32-60)
+
+```typescript
+const CURRENT_VAULT_VERSION = 2;
+
+function migrateVault(vault: PasswordVault): PasswordVault {
+  const vaultVersion = vault.vaultVersion ?? 1;
+
+  if (vaultVersion >= CURRENT_VAULT_VERSION) {
+    return vault; // Already migrated
+  }
+
+  console.log('Migrating vault from version', vaultVersion, 'to', CURRENT_VAULT_VERSION);
+
+  // Migrate from v1 to v2: Remove category field
+  if (vaultVersion === 1) {
+    const migratedEntries = vault.vault.map((entry: any) => {
+      const { category, ...entryWithoutCategory } = entry;
+      return entryWithoutCategory as PasswordEntry;
+    });
+
+    return {
+      ...vault,
+      vault: migratedEntries,
+      vaultVersion: CURRENT_VAULT_VERSION,
+    };
+  }
+
+  return vault;
+}
+```
+
+### Migration Behavior
+
+1. **Automatic**: Runs when `unlockVault()` is called
+2. **Idempotent**: Safe to run multiple times (no-op if already migrated)
+3. **Persisted**: Migrated vault is re-encrypted and saved to GitHub/localStorage
+4. **Backward Compatible**: Old vaults (v1) work seamlessly - they just auto-upgrade
+5. **Performance**: Minimal overhead (single version check for already-migrated vaults)
+
+### Adding New Migrations
+
+When making breaking changes to the vault schema:
+
+1. Increment `CURRENT_VAULT_VERSION`
+2. Add new migration case in `migrateVault()`
+3. Update type definitions
+4. Keep old migration logic for backward compatibility
+5. Test with vaults from all previous versions
+
+**Example**:
+```typescript
+// Future migration example
+if (vaultVersion === 2) {
+  // v2 → v3: Add new field
+  const migratedEntries = vault.vault.map(entry => ({
+    ...entry,
+    newField: defaultValue,
+  }));
+
+  return {
+    ...vault,
+    vault: migratedEntries,
+    vaultVersion: 3,
+  };
+}
 ```
