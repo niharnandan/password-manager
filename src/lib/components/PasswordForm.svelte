@@ -1,10 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
   import type { PasswordEntry } from "$lib/types/password";
-  import { vault } from "$lib/stores/vault";
 
   export let password: PasswordEntry | undefined = undefined;
-  export let initialCategory: string = "";
   export let onCancel: () => void;
 
   const dispatch = createEventDispatcher();
@@ -15,18 +13,8 @@
     username: password?.username || "",
     password: password?.password || "",
     url: password?.url || "",
-    category: password?.category || initialCategory || "",
     notes: password?.notes || "",
   };
-
-  // Extract existing categories for the dropdown - Uncategorized first, then alphabetical
-  $: existingCategories = $vault
-    ? Array.from(new Set($vault.vault.map((entry) => entry.category).filter(cat => cat.trim() !== ""))).sort((a, b) => {
-        if (a === "Uncategorized" && b !== "Uncategorized") return -1;
-        if (b === "Uncategorized" && a !== "Uncategorized") return 1;
-        return a.toLowerCase().localeCompare(b.toLowerCase());
-      })
-    : [];
 
   // Generate a secure random password
   function generatePassword() {
@@ -45,12 +33,7 @@
 
   // Handle form submission
   function handleSubmit() {
-    // Default empty category to "Uncategorized"
-    const submitData = {
-      ...formData,
-      category: formData.category.trim() || "Uncategorized"
-    };
-    dispatch("submit", submitData);
+    dispatch("submit", formData);
   }
 
   // Toggle password visibility
@@ -60,7 +43,7 @@
   }
 </script>
 
-<form on:submit|preventDefault={handleSubmit} class="space-y-4">
+<form on:submit|preventDefault={handleSubmit} class="space-y-4 animate-fade-in">
   <div>
     <label
       for="title"
@@ -162,32 +145,6 @@
 
   <div>
     <label
-      for="category"
-      class="block text-sm font-medium text-gray-700 dark:text-gray-300"
-      >Category</label
-    >
-    <div class="mt-1 relative">
-      <input
-        id="category"
-        type="text"
-        bind:value={formData.category}
-        list="categories"
-        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-      />
-      <datalist id="categories">
-        {#each existingCategories as category}
-          <!-- svelte-ignore element_invalid_self_closing_tag -->
-          <option value={category} />
-        {/each}
-      </datalist>
-    </div>
-    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-      Use / to create nested categories (e.g. "Personal/Email")
-    </p>
-  </div>
-
-  <div>
-    <label
       for="notes"
       class="block text-sm font-medium text-gray-700 dark:text-gray-300"
       >Notes</label
@@ -204,13 +161,13 @@
     <button
       type="button"
       on:click={onCancel}
-      class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 ease-in-out hover:shadow-sm"
     >
       Cancel
     </button>
     <button
       type="submit"
-      class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 ease-in-out hover:shadow-md active:scale-[0.98]"
     >
       {password ? "Update" : "Save"}
     </button>

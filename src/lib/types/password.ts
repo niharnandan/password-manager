@@ -5,15 +5,20 @@ export interface PasswordEntry {
   username: string;
   password: string;
   url: string;
-  category: string;
   notes: string;
   created: string;
   modified: string;
 }
 
+// Legacy password entry with category field (for migration)
+export interface LegacyPasswordEntry extends PasswordEntry {
+  category?: string;
+}
+
 // Vault type for storing the entire encrypted collection
 export interface PasswordVault {
   version: string;
+  vaultVersion?: number; // Track data schema version for migrations
   vault: PasswordEntry[];
   globalNotes: string; // Added global notes field
   verification: {

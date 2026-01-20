@@ -18,11 +18,9 @@
   import { isGitHubAuthenticated } from "$lib/stores/github-auth";
   import PasswordList from "./PasswordList.svelte";
   import PasswordForm from "./PasswordForm.svelte";
-  import CategoryTree from "./CategoryTree.svelte";
   import { slide } from "svelte/transition";
 
   // State for the UI
-  let selectedCategory: string = "all";
   let selectedPasswordId: string | null = null;
   let isAddingPassword: boolean = false;
   let isEditingPassword: boolean = false;
@@ -41,21 +39,8 @@
   let showImportConfirmation: boolean = false;
   let importFileContent: string = "";
 
-  // Mobile drawer state
-  let drawerOpen: boolean = false;
-
   // Password visibility state
   let showPassword: boolean = false;
-
-  // Toggle drawer
-  function toggleDrawer() {
-    drawerOpen = !drawerOpen;
-  }
-
-  // Close drawer (useful after selecting a category on mobile)
-  function closeDrawer() {
-    drawerOpen = false;
-  }
 
   // Toggle password visibility
   function togglePasswordVisibility() {
@@ -77,42 +62,22 @@
   // Derived state for filtering and sorting passwords
   $: filteredPasswords =
     $vault?.vault?.filter((entry) => {
-      const matchesCategory =
-        selectedCategory === "all" || entry.category === selectedCategory;
-      const matchesSearch =
-        !searchQuery ||
-        entry.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        entry.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        entry.url.toLowerCase().includes(searchQuery.toLowerCase());
+      if (!searchQuery) return true;
 
-      return matchesCategory && matchesSearch;
+      const query = searchQuery.toLowerCase();
+      return (
+        entry.title.toLowerCase().includes(query) ||
+        entry.username.toLowerCase().includes(query) ||
+        entry.url.toLowerCase().includes(query)
+      );
     }).sort((a, b) => a.title.toLowerCase().localeCompare(b.title.toLowerCase())) || [];
-
-  // Extract all unique categories for the sidebar - Uncategorized first, then alphabetical
-  $: categories = $vault?.vault
-    ? Array.from(new Set($vault.vault.map((entry) => entry.category).filter(cat => cat.trim() !== ""))).sort((a, b) => {
-        if (a === "Uncategorized" && b !== "Uncategorized") return -1;
-        if (b === "Uncategorized" && a !== "Uncategorized") return 1;
-        return a.toLowerCase().localeCompare(b.toLowerCase());
-      })
-    : [];
-
-  // Handle category selection
-  function selectCategory(category: string) {
-    selectedCategory = category;
-    selectedPasswordId = null;
-    showingNotes = false; // Hide notes when selecting category
-    closeDrawer(); // Close drawer after selection on mobile
-  }
 
   // Handle notes selection
   function selectNotes() {
     showingNotes = true;
     selectedPasswordId = null;
-    selectedCategory = "";
     isAddingPassword = false;
     isEditingPassword = false;
-    closeDrawer(); // Close drawer after selection on mobile
   }
 
   // Password selection handler
@@ -173,7 +138,6 @@
         username: passwordData.username,
         password: passwordData.password,
         url: passwordData.url,
-        category: passwordData.category,
         notes: passwordData.notes,
       });
       isAddingPassword = false;
@@ -183,7 +147,6 @@
         username: passwordData.username,
         password: passwordData.password,
         url: passwordData.url,
-        category: passwordData.category,
         notes: passwordData.notes,
       });
       isEditingPassword = false;
@@ -316,33 +279,12 @@
   }
 </script>
 
-<div class="h-screen bg-gray-100 dark:bg-gray-900 flex flex-col">
+<div class="h-screen bg-slate-50 dark:bg-gray-900 flex flex-col">
   <!-- Top navbar -->
-  <nav class="bg-white dark:bg-gray-800 shadow-sm">
+  <nav class="bg-white dark:bg-gray-800 shadow-md ring-1 ring-gray-900/5 transition-shadow duration-300">
     <div class="w-full mx-auto px-4">
       <div class="flex justify-between h-16">
         <div class="flex items-center">
-          <!-- Hamburger button for mobile -->
-          <button
-            on:click={toggleDrawer}
-            class="md:hidden mr-3 text-gray-600 dark:text-gray-300 focus:outline-none"
-            aria-label="Toggle menu"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-6 w-6"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M4 6h16M4 12h16M4 18h16"
-              />
-            </svg>
-          </button>
           <h1 class="text-xl font-bold text-gray-900 dark:text-white">
             Secure Password Manager
           </h1>
@@ -351,7 +293,7 @@
           <!-- Add New button -->
           <button
             on:click={startAddPassword}
-            class="hidden sm:inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="hidden sm:inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 ease-in-out hover:shadow-md active:scale-[0.98]"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -445,7 +387,7 @@
 
           <button
             on:click={handleLogout}
-            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all duration-200 ease-in-out hover:shadow-md active:scale-[0.98]"
           >
             Logout
           </button>
@@ -482,7 +424,7 @@
         <div class="flex items-center justify-between mt-2 gap-2">
           <button
             on:click={startAddPassword}
-            class="inline-flex justify-center items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="inline-flex justify-center items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 ease-in-out hover:shadow-md active:scale-[0.98]"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -555,102 +497,15 @@
 
   <!-- Main content -->
   <div class="flex-1 flex flex-row overflow-hidden relative min-h-0">
-    <!-- Mobile overlay to close drawer when clicking outside -->
-    {#if drawerOpen}
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div
-        class="fixed inset-0 bg-black bg-opacity-50 z-10 md:hidden"
-        on:click={closeDrawer}
-        transition:slide={{ duration: 150 }}
-      ></div>
-    {/if}
-
-    <!-- Sidebar with categories (drawer on mobile) -->
-    <aside
-      class="bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto
-              {drawerOpen ? 'fixed inset-y-0 left-0 z-20 w-64' : 'hidden'} 
-              md:relative md:block md:w-64 md:z-0"
-      transition:slide={{ duration: 200 }}
-    >
-      <div class="p-4">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-lg font-medium text-gray-900 dark:text-white">
-            Categories
-          </h2>
-
-          <!-- Close button for mobile -->
-          <button
-            on:click={closeDrawer}
-            class="md:hidden text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100"
-            aria-label="Close menu"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-5 w-5"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path
-                fill-rule="evenodd"
-                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                clip-rule="evenodd"
-              />
-            </svg>
-          </button>
-        </div>
-
-        <CategoryTree
-          {categories}
-          {selectedCategory}
-          onSelectCategory={selectCategory}
-        />
-
-        <button
-          on:click={() => selectCategory("all")}
-          class="mt-4 w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer {selectedCategory ===
-            'all' && !showingNotes
-            ? 'bg-gray-100 dark:bg-gray-700'
-            : ''}"
-        >
-          All Passwords
-        </button>
-
-        <!-- Notes section -->
-        <button
-          on:click={selectNotes}
-          class="mt-2 w-full text-left px-3 py-2 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center cursor-pointer {showingNotes
-            ? 'bg-gray-100 dark:bg-gray-700'
-            : ''}"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-4 w-4 mr-2"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-            />
-          </svg>
-          Notes
-        </button>
-      </div>
-    </aside>
-
     {#if !showingNotes}
-      <!-- Password list - 50% width on mobile, 1/3 on desktop -->
+      <!-- Password list - 40% width on desktop, full width on mobile stacked -->
       <div
-        class="bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto w-1/2 md:w-1/3"
+        class="bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto w-full md:w-2/5 shadow-sm hover:shadow-md transition-all duration-300"
       >
         <div class="p-4">
           <div class="mb-4">
             <h2 class="text-lg font-medium text-gray-900 dark:text-white">
-              {selectedCategory === "all" ? "All Passwords" : selectedCategory}
+              All Passwords
             </h2>
           </div>
 
@@ -662,8 +517,8 @@
         </div>
       </div>
 
-      <!-- Password details/form - 50% width on mobile, 2/3 on desktop -->
-      <div class="flex-1 bg-white dark:bg-gray-800 overflow-y-auto p-4 md:p-6">
+      <!-- Password details/form - 60% width on desktop, full width on mobile -->
+      <div class="flex-1 bg-white dark:bg-gray-800 overflow-y-auto p-4 md:p-6 transition-all duration-300 animate-fade-in">
         {#if isAddingPassword}
           <div class="mb-4 flex justify-between items-center">
             <h2 class="text-lg font-medium text-gray-900 dark:text-white">
@@ -677,7 +532,6 @@
             </button>
           </div>
           <PasswordForm
-            initialCategory={selectedCategory !== "all" ? selectedCategory : ""}
             onCancel={cancelForm}
             on:submit={handlePasswordSubmit}
           />
@@ -688,7 +542,7 @@
             </h2>
             <button
               on:click={cancelForm}
-              class="text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100"
+              class="text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100 transition-colors duration-200"
             >
               Cancel
             </button>
@@ -709,20 +563,20 @@
               <div class="flex space-x-2">
                 <button
                   on:click={startEditPassword}
-                  class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 ease-in-out hover:shadow-md active:scale-[0.98]"
                 >
                   Edit
                 </button>
                 <button
                   on:click={handleDeletePassword}
-                  class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all duration-200 ease-in-out hover:shadow-md active:scale-[0.98]"
                 >
                   Delete
                 </button>
               </div>
             </div>
 
-            <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-4">
+            <div class="bg-slate-50 dark:bg-gray-700 rounded-lg p-4 mb-4 shadow-sm ring-1 ring-gray-900/5">
               <div class="grid grid-cols-1 gap-4">
                 <div>
                   <h3
@@ -853,22 +707,11 @@
                       href={entry.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      class="text-sm text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 break-all"
+                      class="text-sm text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 break-all transition-colors duration-200"
                     >
                       {entry.url}
                     </a>
                   </div>
-                </div>
-
-                <div>
-                  <h3
-                    class="text-sm font-medium text-gray-500 dark:text-gray-400"
-                  >
-                    Category
-                  </h3>
-                  <p class="mt-1 text-sm text-gray-900 dark:text-white">
-                    {entry.category}
-                  </p>
                 </div>
 
                 {#if entry.notes}

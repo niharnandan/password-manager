@@ -314,16 +314,16 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900" on:click={handleOutsideClick}>
-  <div class="w-full max-w-md">
-    <div class="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md">
+<div class="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-gray-900 transition-colors duration-300" on:click={handleOutsideClick}>
+  <div class="w-full max-w-md animate-fade-in">
+    <div class="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 ring-1 ring-gray-900/5">
       <h1 class="text-2xl font-bold mb-6 text-center text-gray-700 dark:text-gray-200">
         {hasWebAuthn ? 'Unlock Your Vault' : 'Enter Master Password'}
       </h1>
       
       <!-- WebAuthn Flow (when user has Face ID set up) -->
       {#if hasWebAuthn && !showPasswordForm}
-        <div class="text-center space-y-4 face-id-container">
+        <div class="text-center space-y-4 face-id-container animate-fade-in">
           <!-- Face ID Status -->
           {#if isLoading}
             <div class="flex flex-col items-center space-y-4">
@@ -352,11 +352,11 @@
           <!-- Action Buttons -->
           <div class="space-y-3">
             {#if !isLoading}
-              <button 
+              <button
                 type="button"
                 on:click={tryWebAuthnLogin}
                 disabled={webAuthnRetryCount >= MAX_RETRIES}
-                class="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 flex items-center justify-center"
+                class="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-200 ease-in-out hover:shadow-md active:scale-[0.98] flex items-center justify-center"
               >
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
@@ -366,10 +366,10 @@
               </button>
             {/if}
             
-            <button 
+            <button
               type="button"
               on:click={usePasswordInstead}
-              class="w-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium py-2 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500"
+              class="w-full bg-slate-200 dark:bg-gray-700 hover:bg-slate-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium py-2 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-all duration-200 ease-in-out hover:shadow-sm active:scale-[0.98]"
             >
               Use Password Instead
             </button>
@@ -382,7 +382,7 @@
         </div>
       {:else}
         <!-- Password Form -->
-        <form on:submit|preventDefault={handleSubmit} class="space-y-6">
+        <form on:submit|preventDefault={handleSubmit} class="space-y-6 animate-slide-in">
           <div>
             <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Master Password
@@ -427,10 +427,10 @@
             <p class="text-red-500 text-sm {errorMessage.includes('WARNING') ? 'font-bold bg-red-50 dark:bg-red-900/20 p-2 rounded border border-red-200 dark:border-red-800' : ''}">{errorMessage}</p>
           {/if}
           
-          <button 
+          <button
             type="submit"
             disabled={isLoading}
-            class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-center"
+            class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 ease-in-out hover:shadow-md active:scale-[0.98] flex items-center justify-center"
           >
             {#if isLoading}
               <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

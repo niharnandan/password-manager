@@ -28,6 +28,37 @@ import type {
   EncryptedVault,
 } from "$lib/types/password";
 
+// Current vault data schema version
+const CURRENT_VAULT_VERSION = 2; // Version 1 had categories, version 2 removes them
+
+// Migration function to update vault schema
+function migrateVault(vault: PasswordVault): PasswordVault {
+  // Check if migration is needed
+  const vaultVersion = vault.vaultVersion ?? 1;
+
+  if (vaultVersion >= CURRENT_VAULT_VERSION) {
+    return vault; // Already migrated
+  }
+
+  console.log('Migrating vault from version', vaultVersion, 'to', CURRENT_VAULT_VERSION);
+
+  // Migrate from v1 to v2: Remove category field
+  if (vaultVersion === 1) {
+    const migratedEntries = vault.vault.map((entry: any) => {
+      const { category, ...entryWithoutCategory } = entry;
+      return entryWithoutCategory as PasswordEntry;
+    });
+
+    return {
+      ...vault,
+      vault: migratedEntries,
+      vaultVersion: CURRENT_VAULT_VERSION,
+    };
+  }
+
+  return vault;
+}
+
 // Store for the master key (never persisted)
 export const masterKey = writable<Uint8Array | null>(null);
 
@@ -215,6 +246,7 @@ export function initializeVault(password: string): void {
     // Create initial empty vault
     const emptyVault: PasswordVault = {
       version: "1.0",
+      vaultVersion: CURRENT_VAULT_VERSION,
       vault: [],
       globalNotes: "", // Initialize empty global notes
       verification: {
@@ -313,6 +345,22 @@ export async function unlockVault(password: string): Promise<boolean> {
       // Handle migration for vaults without globalNotes field
       if (parsedVault.globalNotes === undefined) {
         parsedVault.globalNotes = "";
+      }
+
+      // Migrate vault if needed
+      const migratedVault = migrateVault(parsedVault);
+
+      // If migration occurred, save the migrated vault
+      if (migratedVault !== parsedVault || migratedVault.vaultVersion !== parsedVault.vaultVersion) {
+        console.log('Vault migration completed, saving...');
+        const { ciphertext, nonce } = encrypt(JSON.stringify(migratedVault), key);
+        const newEncryptedVault = {
+          ...currentEncryptedVault,
+          ciphertext,
+          nonce,
+        };
+        encryptedVault.set(newEncryptedVault);
+        cacheVault(newEncryptedVault);
       }
 
       // Store the key in memory
