@@ -55,11 +55,11 @@
   }
 </script>
 
-<form on:submit|preventDefault={handleSubmit} class="space-y-4 animate-fade-in">
+<form on:submit|preventDefault={handleSubmit} class="space-y-6 animate-scale-in">
   <div>
     <label
       for="title"
-      class="block text-sm font-medium text-gray-700 dark:text-gray-300"
+      class="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2"
       >Title</label
     >
     <input
@@ -67,37 +67,37 @@
       type="text"
       bind:value={formData.title}
       required
-      class="mt-1 w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+      class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm hover:shadow-md transition-all duration-300"
     />
   </div>
 
   <div>
     <label
       for="username"
-      class="block text-sm font-medium text-gray-700 dark:text-gray-300"
+      class="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2"
       >Username / Email</label
     >
     <input
       id="username"
       type="text"
       bind:value={formData.username}
-      class="mt-1 w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+      class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm hover:shadow-md transition-all duration-300"
     />
   </div>
 
   <div>
     <label
       for="password"
-      class="block text-sm font-medium text-gray-700 dark:text-gray-300"
+      class="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2"
       >Password</label
     >
-    <div class="mt-1 relative rounded-md shadow-sm">
+    <div class="relative">
       <input
         id="password"
         type={showPassword ? "text" : "password"}
         bind:value={formData.password}
         required
-        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 pr-32"
+        class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm hover:shadow-md transition-all duration-300 pr-36"
       />
       <div class="absolute inset-y-0 right-0 flex items-center gap-1">
         <!-- Eye icon - toggle visibility -->
@@ -169,7 +169,7 @@
         <button
           type="button"
           on:click={generatePassword}
-          class="inline-flex items-center px-2 py-1 border border-transparent text-xs font-medium rounded text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 transition-all duration-200 mr-2"
+          class="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-semibold rounded-md text-white bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 mr-2 shadow-sm btn-hover-shine btn-hover-elevate"
         >
           Generate
         </button>
@@ -180,44 +180,44 @@
   <div>
     <label
       for="url"
-      class="block text-sm font-medium text-gray-700 dark:text-gray-300"
+      class="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2"
       >Website URL</label
     >
     <input
       id="url"
       type="text"
       bind:value={formData.url}
-      class="mt-1 w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+      class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm hover:shadow-md transition-all duration-300"
     />
   </div>
 
   <div>
     <label
       for="notes"
-      class="block text-sm font-medium text-gray-700 dark:text-gray-300"
+      class="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2"
       >Notes</label
     >
     <textarea
       id="notes"
       bind:value={formData.notes}
       rows="3"
-      class="mt-1 w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+      class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm hover:shadow-md transition-all duration-300 resize-none"
     ></textarea>
   </div>
 
-  <div class="flex justify-end space-x-3 pt-4">
+  <div class="flex justify-end space-x-3 pt-6 border-t border-gray-200 dark:border-gray-700">
     <button
       type="button"
       on:click={onCancel}
-      class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 ease-in-out hover:shadow-sm"
+      class="px-6 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-slate-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 btn-hover-elevate"
     >
       Cancel
     </button>
     <button
       type="submit"
-      class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 ease-in-out hover:shadow-md active:scale-[0.98]"
+      class="px-6 py-2.5 border border-transparent rounded-lg text-sm font-semibold text-white gradient-blue btn-gradient-shift btn-hover-shine btn-hover-elevate focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
     >
-      {password ? "Update" : "Save"}
+      {password ? "Update Password" : "Save Password"}
     </button>
   </div>
 </form>

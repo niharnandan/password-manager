@@ -39,15 +39,3 @@ export function clearCachedVault(): void {
     console.error("Error clearing cached vault:", error);
   }
 }
-
-export function getCacheTimestamp(): number | null {
-  if (!browser) return null;
-
-  try {
-    const timestamp = localStorage.getItem(VAULT_TIMESTAMP_KEY);
-    return timestamp ? parseInt(timestamp, 10) : null;
-  } catch (error) {
-    console.error("Error retrieving cache timestamp:", error);
-    return null;
-  }
-}

@@ -4,8 +4,6 @@ import nacl from "tweetnacl";
 
 const WEBAUTHN_CREDENTIAL_KEY = "webauthn_credential_id";
 const WEBAUTHN_ENCRYPTED_KEY = "webauthn_encrypted_key";
-const WEBAUTHN_PUBLIC_KEY = "webauthn_public_key";
-const WEBAUTHN_SALT = "webauthn_salt";
 
 export interface WebAuthnCredential {
   id: string;
@@ -271,27 +269,6 @@ export function clearWebAuthnCredential(): void {
 
   localStorage.removeItem(WEBAUTHN_CREDENTIAL_KEY);
   localStorage.removeItem(WEBAUTHN_ENCRYPTED_KEY);
-  localStorage.removeItem(WEBAUTHN_PUBLIC_KEY);
-  localStorage.removeItem(WEBAUTHN_SALT);
-}
-
-// Helper function to check if user gesture is available (for older Safari versions)
-export function isUserGestureAvailable(): boolean {
-  if (!browser) return false;
-
-  // Check if we're in a user gesture context by trying to open a popup
-  // This is a non-intrusive way to check user gesture availability
-  try {
-    const popup = window.open("", "_blank", "width=1,height=1");
-    if (popup) {
-      popup.close();
-      return true;
-    }
-  } catch (e) {
-    // Ignore errors
-  }
-
-  return false;
 }
 
 // Helper function to ensure WebAuthn is called within user gesture
@@ -299,14 +276,5 @@ export async function ensureUserGesture(): Promise<boolean> {
   if (!browser) return false;
 
   // Modern browsers don't require user gesture for WebAuthn
-  // This is mainly for older Safari versions
-  const userAgent = navigator.userAgent;
-  const isOldSafari =
-    /Safari/.test(userAgent) && /Version\/1[4-6]/.test(userAgent);
-
-  if (!isOldSafari) {
-    return true;
-  }
-
-  return isUserGestureAvailable();
+  return true;
 }

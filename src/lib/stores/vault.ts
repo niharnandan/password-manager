@@ -40,7 +40,12 @@ function migrateVault(vault: PasswordVault): PasswordVault {
     return vault; // Already migrated
   }
 
-  console.log('Migrating vault from version', vaultVersion, 'to', CURRENT_VAULT_VERSION);
+  console.log(
+    "Migrating vault from version",
+    vaultVersion,
+    "to",
+    CURRENT_VAULT_VERSION,
+  );
 
   // Migrate from v1 to v2: Remove category field
   if (vaultVersion === 1) {
@@ -312,7 +317,7 @@ export async function unlockVault(password: string): Promise<boolean> {
 
   // Normal password flow
   if (password) {
-    loadGitHubAuth(password);
+    loadGitHubAuth();
   }
   const loaded = await loadVaultFromGitHub();
   if (!loaded) return false;
@@ -351,9 +356,15 @@ export async function unlockVault(password: string): Promise<boolean> {
       const migratedVault = migrateVault(parsedVault);
 
       // If migration occurred, save the migrated vault
-      if (migratedVault !== parsedVault || migratedVault.vaultVersion !== parsedVault.vaultVersion) {
-        console.log('Vault migration completed, saving...');
-        const { ciphertext, nonce } = encrypt(JSON.stringify(migratedVault), key);
+      if (
+        migratedVault !== parsedVault ||
+        migratedVault.vaultVersion !== parsedVault.vaultVersion
+      ) {
+        console.log("Vault migration completed, saving...");
+        const { ciphertext, nonce } = encrypt(
+          JSON.stringify(migratedVault),
+          key,
+        );
         const newEncryptedVault = {
           ...currentEncryptedVault,
           ciphertext,
@@ -368,7 +379,7 @@ export async function unlockVault(password: string): Promise<boolean> {
       isAuthenticated.set(true);
 
       // Load GitHub authentication if available
-      loadGitHubAuth(password);
+      loadGitHubAuth();
 
       // Try to sync with GitHub if auth is available
       if (get(isGitHubAuthenticated)) {

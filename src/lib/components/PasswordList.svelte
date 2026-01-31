@@ -30,28 +30,41 @@
     No passwords found
   </p>
 {:else}
-  <div class="space-y-4">
+  <div class="-mx-4 pb-4">
     {#each letters as letter, i}
-      <div class="animate-slide-in" style="animation-delay: {i * 50}ms;">
+      <div class="animate-slide-up {i > 0 ? 'mt-6' : ''}" style="animation-delay: {i * 40}ms;">
         <!-- Letter header -->
-        <div class="sticky top-0 bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-700 z-10">
-          {letter}
+        <div class="sticky top-0 bg-white dark:bg-gray-800 backdrop-blur-md px-4 py-3 z-10 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+          <div class="flex items-center gap-2">
+            <span class="text-2xl font-bold text-blue-600 dark:text-blue-400">{letter}</span>
+            <div class="flex-1 h-px bg-gradient-to-r from-gray-300/50 to-transparent dark:from-gray-600/50"></div>
+          </div>
         </div>
 
         <!-- Passwords in this group -->
-        <div class="space-y-1 mt-1">
+        <div class="space-y-1.5 mt-2 px-4">
           {#each groupedPasswords[letter] as password}
             <button
               on:click={() => onSelectPassword(password.id)}
-              class="w-full text-left px-3 py-2.5 rounded-md text-sm transition-all duration-200 ease-in-out
+              class="w-full text-left px-4 py-3 rounded-lg text-sm ease-out group
                 {selectedPasswordId === password.id
-                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 shadow-sm ring-1 ring-blue-500/20'
-                  : 'text-gray-700 dark:text-gray-200 hover:bg-slate-50 dark:hover:bg-slate-800 hover:shadow-sm'
+                  ? 'bg-gradient-to-r from-blue-50 via-blue-50 to-blue-100/60 dark:from-blue-900/50 dark:via-blue-900/40 dark:to-blue-800/40 text-blue-800 dark:text-blue-200 shadow-glow-blue ring-2 ring-blue-500/40 scale-[1.02] font-medium'
+                  : 'text-gray-800 dark:text-gray-100 hover:bg-gradient-to-r hover:from-white hover:to-slate-50/50 dark:hover:from-slate-800/80 dark:hover:to-slate-750 btn-hover-elevate'
                 }
               "
             >
-              <div class="font-medium truncate">{password.title}</div>
-              <div class="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
+              <div class="font-semibold truncate flex items-center">
+                <span class="flex-1">{password.title}</span>
+                {#if selectedPasswordId === password.id}
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-500 dark:text-blue-400 ml-2 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+                  </svg>
+                {/if}
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 truncate mt-1 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
                 {password.username}
               </div>
             </button>

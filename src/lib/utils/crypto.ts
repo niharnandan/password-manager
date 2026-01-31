@@ -93,28 +93,3 @@ export const decrypt = (
   // Convert decrypted bytes to string
   return util.encodeUTF8(decrypted);
 };
-
-// Create a verification object to check if the password is correct
-export const createVerificationObject = (): string => {
-  return JSON.stringify({
-    marker: "VALID_VAULT",
-    version: "1.0",
-  });
-};
-
-// Verify if the provided password is correct by trying to decrypt the verification object
-export const verifyPassword = (
-  encryptedVerification: string,
-  verificationNonce: string,
-  key: Uint8Array,
-): boolean => {
-  const decrypted = decrypt(encryptedVerification, verificationNonce, key);
-  if (!decrypted) return false;
-
-  try {
-    const verification = JSON.parse(decrypted);
-    return verification.marker === "VALID_VAULT";
-  } catch (e) {
-    return false;
-  }
-};

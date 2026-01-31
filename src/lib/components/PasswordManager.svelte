@@ -26,6 +26,7 @@
   let isEditingPassword: boolean = false;
   let searchQuery: string = "";
   let showingNotes: boolean = false; // New state for notes view
+  let mobileMenuOpen: boolean = false; // Mobile sidebar drawer state
 
   // Notes editing state
   let isEditingNotes: boolean = false;
@@ -87,6 +88,7 @@
     isAddingPassword = false;
     isEditingPassword = false;
     showPassword = false; // Reset password visibility when selecting a new password
+    mobileMenuOpen = false; // Close mobile menu when password is selected
   }
 
   // Start adding a new password
@@ -95,6 +97,7 @@
     showingNotes = false;
     isAddingPassword = true;
     isEditingPassword = false;
+    mobileMenuOpen = false; // Close mobile menu when adding a new password
   }
 
   // Start editing a password
@@ -281,11 +284,32 @@
 
 <div class="h-screen bg-slate-50 dark:bg-gray-900 flex flex-col">
   <!-- Top navbar -->
-  <nav class="bg-white dark:bg-gray-800 shadow-md ring-1 ring-gray-900/5 transition-shadow duration-300">
+  <nav class="bg-gradient-to-r from-white via-white to-slate-50/50 dark:from-gray-800 dark:via-gray-800 dark:to-gray-850 shadow-premium-lg border-b border-gray-200/80 dark:border-gray-700/80 backdrop-blur-sm transition-all duration-300">
     <div class="w-full mx-auto px-4">
       <div class="flex justify-between h-16">
         <div class="flex items-center">
-          <h1 class="text-xl font-bold text-gray-900 dark:text-white">
+          <!-- Hamburger menu button (mobile only) -->
+          <button
+            on:click={() => mobileMenuOpen = !mobileMenuOpen}
+            class="md:hidden mr-3 p-2 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white transition-colors duration-200"
+            aria-label="Toggle menu"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 6h16M4 12h16M4 18h16"
+              />
+            </svg>
+          </button>
+          <h1 class="text-xl font-bold text-gray-900 dark:text-gray-100">
             Secure Password Manager
           </h1>
         </div>
@@ -293,7 +317,7 @@
           <!-- Add New button -->
           <button
             on:click={startAddPassword}
-            class="hidden sm:inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 ease-in-out hover:shadow-md active:scale-[0.98]"
+            class="hidden sm:inline-flex items-center px-4 py-2 border border-transparent text-sm font-semibold rounded-lg text-white gradient-blue btn-gradient-shift btn-hover-shine btn-hover-elevate focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -317,7 +341,7 @@
               type="search"
               placeholder="Search passwords..."
               bind:value={searchQuery}
-              class="w-48 md:w-64 pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              class="w-48 md:w-64 pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm hover:shadow-md transition-all duration-300"
             />
             <div
               class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"
@@ -341,42 +365,42 @@
           {#if $isGitHubAuthenticated}
             <div class="hidden sm:flex items-center space-x-2">
               {#if $syncStatus.syncing}
-                <button disabled class="flex items-center text-blue-600 text-sm cursor-not-allowed">
-                  <svg class="animate-spin h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <button disabled class="flex items-center text-blue-600 dark:text-blue-400 text-sm font-medium cursor-not-allowed">
+                  <svg class="animate-spin h-4 w-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
                   Syncing...
                 </button>
               {:else if $syncStatus.error}
-                <button 
+                <button
                   on:click={handleSyncClick}
-                  class="flex items-center text-red-600 text-sm hover:text-red-800 transition-colors cursor-pointer" 
+                  class="flex items-center text-red-600 dark:text-red-400 text-sm font-medium hover:text-red-700 dark:hover:text-red-300 transition-colors cursor-pointer"
                   title={$syncStatus.error}
                 >
-                  <svg class="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg class="h-4 w-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.96-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
                   </svg>
                   Sync error
                 </button>
               {:else if $syncStatus.lastSync}
-                <button 
+                <button
                   on:click={handleSyncClick}
-                  class="flex items-center text-green-600 text-sm hover:text-green-800 transition-colors cursor-pointer"
+                  class="flex items-center text-green-600 dark:text-green-400 text-sm font-medium hover:text-green-700 dark:hover:text-green-300 transition-colors cursor-pointer"
                   title="Click to fetch latest passwords from GitHub"
                 >
-                  <svg class="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg class="h-4 w-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                   </svg>
                   Synced
                 </button>
               {:else}
-                <button 
+                <button
                   on:click={handleSyncClick}
-                  class="flex items-center text-gray-600 text-sm hover:text-gray-800 transition-colors cursor-pointer"
+                  class="flex items-center text-gray-700 dark:text-gray-300 text-sm font-medium hover:text-gray-900 dark:hover:text-gray-100 transition-colors cursor-pointer"
                   title="Click to fetch latest passwords from GitHub"
                 >
-                  <svg class="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg class="h-4 w-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
                   Sync
@@ -387,7 +411,7 @@
 
           <button
             on:click={handleLogout}
-            class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all duration-200 ease-in-out hover:shadow-md active:scale-[0.98]"
+            class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-lg text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 btn-hover-elevate"
           >
             Logout
           </button>
@@ -401,7 +425,7 @@
             type="search"
             placeholder="Search passwords..."
             bind:value={searchQuery}
-            class="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm transition-all duration-300"
           />
           <div
             class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none"
@@ -424,7 +448,7 @@
         <div class="flex items-center justify-between mt-2 gap-2">
           <button
             on:click={startAddPassword}
-            class="inline-flex justify-center items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 ease-in-out hover:shadow-md active:scale-[0.98]"
+            class="inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-semibold rounded-lg text-white gradient-blue btn-gradient-shift btn-hover-shine btn-hover-elevate focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -447,42 +471,42 @@
           {#if $isGitHubAuthenticated}
             <div class="flex items-center">
               {#if $syncStatus.syncing}
-                <button disabled class="inline-flex items-center px-3 py-1 text-blue-600 text-sm cursor-not-allowed border border-blue-300 rounded-md">
-                  <svg class="animate-spin h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <button disabled class="inline-flex items-center px-3 py-2 text-blue-600 dark:text-blue-400 text-sm font-medium cursor-not-allowed border border-blue-300 dark:border-blue-700 rounded-lg bg-blue-50 dark:bg-blue-900/20">
+                  <svg class="animate-spin h-4 w-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
                   Syncing...
                 </button>
               {:else if $syncStatus.error}
-                <button 
+                <button
                   on:click={handleSyncClick}
-                  class="inline-flex items-center px-3 py-1 text-red-600 text-sm hover:text-red-800 transition-colors cursor-pointer border border-red-300 rounded-md hover:bg-red-50"
+                  class="inline-flex items-center px-3 py-2 text-red-600 dark:text-red-400 text-sm font-medium hover:text-red-700 dark:hover:text-red-300 transition-colors cursor-pointer border border-red-300 dark:border-red-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
                   title={$syncStatus.error}
                 >
-                  <svg class="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg class="h-4 w-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.96-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
                   </svg>
                   Error
                 </button>
               {:else if $syncStatus.lastSync}
-                <button 
+                <button
                   on:click={handleSyncClick}
-                  class="inline-flex items-center px-3 py-1 text-green-600 text-sm hover:text-green-800 transition-colors cursor-pointer border border-green-300 rounded-md hover:bg-green-50"
+                  class="inline-flex items-center px-3 py-2 text-green-600 dark:text-green-400 text-sm font-medium hover:text-green-700 dark:hover:text-green-300 transition-colors cursor-pointer border border-green-300 dark:border-green-700 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20"
                   title="Click to fetch latest passwords from GitHub"
                 >
-                  <svg class="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg class="h-4 w-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                   </svg>
                   Synced
                 </button>
               {:else}
-                <button 
+                <button
                   on:click={handleSyncClick}
-                  class="inline-flex items-center px-3 py-1 text-gray-600 text-sm hover:text-gray-800 transition-colors cursor-pointer border border-gray-300 rounded-md hover:bg-gray-50"
+                  class="inline-flex items-center px-3 py-2 text-gray-700 dark:text-gray-300 text-sm font-medium hover:text-gray-900 dark:hover:text-gray-100 transition-colors cursor-pointer border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
                   title="Click to fetch latest passwords from GitHub"
                 >
-                  <svg class="h-4 w-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg class="h-4 w-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
                   Sync
@@ -498,13 +522,13 @@
   <!-- Main content -->
   <div class="flex-1 flex flex-row overflow-hidden relative min-h-0">
     {#if !showingNotes}
-      <!-- Password list - 40% width on desktop, full width on mobile stacked -->
+      <!-- Password list - 40% width on desktop, hidden on mobile (mobile uses overlay drawer) -->
       <div
-        class="bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto w-full md:w-2/5 shadow-sm hover:shadow-md transition-all duration-300"
+        class="bg-gradient-to-b from-white via-white to-slate-50/30 dark:from-gray-800 dark:via-gray-800 dark:to-gray-850 border-r border-gray-200 dark:border-gray-700 overflow-y-auto hidden md:block md:w-2/5 shadow-premium transition-all duration-300"
       >
-        <div class="p-4">
+        <div class="p-4 pb-0">
           <div class="mb-4">
-            <h2 class="text-lg font-medium text-gray-900 dark:text-white">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
               All Passwords
             </h2>
           </div>
@@ -518,10 +542,10 @@
       </div>
 
       <!-- Password details/form - 60% width on desktop, full width on mobile -->
-      <div class="flex-1 bg-white dark:bg-gray-800 overflow-y-auto p-4 md:p-6 transition-all duration-300 animate-fade-in">
+      <div class="flex-1 bg-gradient-to-br from-slate-50 via-white to-slate-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-850 overflow-y-auto p-4 md:p-8 transition-all duration-300 animate-fade-in">
         {#if isAddingPassword}
           <div class="mb-4 flex justify-between items-center">
-            <h2 class="text-lg font-medium text-gray-900 dark:text-white">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
               Add New Password
             </h2>
             <button
@@ -537,7 +561,7 @@
           />
         {:else if isEditingPassword && selectedPasswordId && $vault}
           <div class="mb-4 flex justify-between items-center">
-            <h2 class="text-lg font-medium text-gray-900 dark:text-white">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
               Edit Password
             </h2>
             <button
@@ -557,35 +581,41 @@
         {:else if selectedPasswordId && $vault?.vault}
           {#each $vault.vault.filter((entry) => entry.id === selectedPasswordId) as entry}
             <div class="mb-4 flex justify-between items-center">
-              <h2 class="text-lg font-medium text-gray-900 dark:text-white">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
                 {entry.title}
               </h2>
-              <div class="flex space-x-2">
+              <div class="flex space-x-3">
                 <button
                   on:click={startEditPassword}
-                  class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 ease-in-out hover:shadow-md active:scale-[0.98]"
+                  class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-semibold rounded-lg text-white gradient-blue btn-gradient-shift btn-hover-shine btn-hover-elevate focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                 >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
                   Edit
                 </button>
                 <button
                   on:click={handleDeletePassword}
-                  class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all duration-200 ease-in-out hover:shadow-md active:scale-[0.98]"
+                  class="inline-flex items-center px-4 py-2 border border-red-200 dark:border-red-800 text-sm font-medium rounded-lg text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 btn-hover-elevate"
                 >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
                   Delete
                 </button>
               </div>
             </div>
 
-            <div class="bg-slate-50 dark:bg-gray-700 rounded-lg p-4 mb-4 shadow-sm ring-1 ring-gray-900/5">
+            <div class="bg-gradient-to-br from-white via-white to-slate-50/40 dark:from-gray-800/80 dark:via-gray-800/60 dark:to-gray-700/50 rounded-xl p-6 mb-6 shadow-premium-lg ring-1 ring-gray-900/5 dark:ring-white/10 hover-lift hover:shadow-glow-blue transition-all duration-300 backdrop-blur-sm">
               <div class="grid grid-cols-1 gap-4">
                 <div>
                   <h3
-                    class="text-sm font-medium text-gray-500 dark:text-gray-400"
+                    class="text-sm font-semibold text-gray-600 dark:text-gray-300"
                   >
                     Username
                   </h3>
                   <div class="mt-1 flex items-center">
-                    <p class="text-sm text-gray-900 dark:text-white break-all">
+                    <p class="text-sm text-gray-900 dark:text-gray-100 break-all font-medium">
                       {entry.username}
                     </p>
                     <!-- svelte-ignore a11y_consider_explicit_label -->
@@ -613,12 +643,12 @@
 
                 <div>
                   <h3
-                    class="text-sm font-medium text-gray-500 dark:text-gray-400"
+                    class="text-sm font-semibold text-gray-600 dark:text-gray-300"
                   >
                     Password
                   </h3>
                   <div class="mt-1 flex items-center">
-                    <p class="text-sm text-gray-900 dark:text-white break-all">
+                    <p class="text-sm text-gray-900 dark:text-gray-100 break-all font-medium">
                       {showPassword ? entry.password : "••••••••••••"}
                     </p>
                     <div class="ml-2 flex space-x-1">
@@ -698,7 +728,7 @@
 
                 <div>
                   <h3
-                    class="text-sm font-medium text-gray-500 dark:text-gray-400"
+                    class="text-sm font-semibold text-gray-600 dark:text-gray-300"
                   >
                     Website
                   </h3>
@@ -707,7 +737,7 @@
                       href={entry.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      class="text-sm text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 break-all transition-colors duration-200"
+                      class="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 break-all transition-colors duration-200 font-medium"
                     >
                       {entry.url}
                     </a>
@@ -717,12 +747,12 @@
                 {#if entry.notes}
                   <div>
                     <h3
-                      class="text-sm font-medium text-gray-500 dark:text-gray-400"
+                      class="text-sm font-semibold text-gray-600 dark:text-gray-300"
                     >
                       Notes
                     </h3>
                     <p
-                      class="mt-1 text-sm text-gray-900 dark:text-white whitespace-pre-line"
+                      class="mt-1 text-sm text-gray-800 dark:text-gray-200 whitespace-pre-line"
                     >
                       {entry.notes}
                     </p>
@@ -731,31 +761,37 @@
               </div>
             </div>
 
-            <div class="text-xs text-gray-500 dark:text-gray-400">
+            <div class="text-xs text-gray-600 dark:text-gray-400">
               <p>Created: {new Date(entry.created).toLocaleString()}</p>
               <p>Last modified: {new Date(entry.modified).toLocaleString()}</p>
             </div>
           {/each}
         {:else}
           <div
-            class="flex flex-col items-center justify-center h-full text-gray-500 dark:text-gray-400"
+            class="flex flex-col items-center justify-center h-full animate-fade-in"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-16 w-16 mb-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-              />
-            </svg>
-            <p class="text-lg font-medium">
-              Select a password or add a new one
+            <div class="relative">
+              <div class="absolute inset-0 bg-blue-500/10 rounded-full blur-3xl"></div>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-20 w-20 mb-6 text-blue-500/80 dark:text-blue-400/80 relative"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                />
+              </svg>
+            </div>
+            <p class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">
+              Select a password to get started
+            </p>
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+              Or create a new one using the button above
             </p>
           </div>
         {/if}
@@ -817,6 +853,59 @@
       </div>
     {/if}
   </div>
+
+  <!-- Mobile password list overlay drawer -->
+  {#if mobileMenuOpen && !showingNotes}
+    <div class="fixed inset-0 z-40 md:hidden">
+      <!-- Backdrop -->
+      <div
+        class="absolute inset-0 bg-black bg-opacity-50 transition-opacity duration-300"
+        on:click={() => mobileMenuOpen = false}
+        on:keydown={(e) => e.key === 'Escape' && (mobileMenuOpen = false)}
+        role="button"
+        tabindex="0"
+        aria-label="Close menu"
+      ></div>
+
+      <!-- Slide-out panel -->
+      <div class="absolute left-0 top-0 bottom-0 w-4/5 max-w-sm bg-gradient-to-b from-white via-white to-slate-50/30 dark:from-gray-800 dark:via-gray-800 dark:to-gray-850 shadow-premium-lg animate-slide-in-left overflow-y-auto border-r border-gray-200 dark:border-gray-700">
+        <div class="p-4 pb-0">
+          <!-- Close button -->
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              All Passwords
+            </h2>
+            <button
+              on:click={() => mobileMenuOpen = false}
+              class="text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100 p-1"
+              aria-label="Close menu"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+
+          <PasswordList
+            passwords={filteredPasswords}
+            {selectedPasswordId}
+            onSelectPassword={selectPassword}
+          />
+        </div>
+      </div>
+    </div>
+  {/if}
 
   <!-- Import Modal -->
   {#if showImportModal}
