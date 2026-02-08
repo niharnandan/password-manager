@@ -138,31 +138,55 @@
           type="button"
           on:click={copyPassword}
           disabled={!formData.password}
-          class="p-1 text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200"
+          class="p-1 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200 overflow-visible"
+          class:text-green-500={passwordCopied}
+          class:text-gray-400={!passwordCopied}
+          class:hover:text-gray-500={!passwordCopied}
+          class:dark:hover:text-gray-300={!passwordCopied}
           title={passwordCopied ? "Copied!" : "Copy password"}
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-          >
-            {#if passwordCopied}
-              <!-- Checkmark icon -->
-              <path
-                fill-rule="evenodd"
-                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                clip-rule="evenodd"
-                class="text-green-500"
+          {#if passwordCopied}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-6 w-6"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              style="overflow: visible;"
+            >
+              <circle
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="2"
+                fill="none"
+                opacity="0.15"
+                class="animate-checkmark-pop"
               />
-            {:else}
+              <path
+                d="M20 6L9 17l-5-5"
+                class="animate-checkmark-draw"
+                style="stroke-dasharray: 50; stroke-dashoffset: 50;"
+              />
+            </svg>
+          {:else}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
               <!-- Clipboard icon -->
               <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
               <path
                 d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z"
               />
-            {/if}
-          </svg>
+            </svg>
+          {/if}
         </button>
 
         <!-- Generate button -->

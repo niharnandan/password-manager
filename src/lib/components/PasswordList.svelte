@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PasswordEntry } from "$lib/types/password";
+  import { getFaviconUrl, hasFavicon } from "$lib/utils/favicon";
 
   export let passwords: PasswordEntry[];
   export let selectedPasswordId: string | null;
@@ -53,8 +54,35 @@
                 }
               "
             >
-              <div class="font-semibold truncate flex items-center">
-                <span class="flex-1">{password.title}</span>
+              <div class="font-semibold truncate flex items-center gap-3">
+                <!-- Favicon/Logo -->
+                {#if hasFavicon(password.title)}
+                  <img
+                    src={getFaviconUrl(password.title)}
+                    alt={password.title}
+                    class="h-6 w-6 rounded-md flex-shrink-0 object-contain bg-white dark:bg-gray-700 p-0.5"
+                    on:error={(e) => {
+                      // Fallback to default icon on error
+                      const img = e.currentTarget as HTMLImageElement;
+                      img.style.display = 'none';
+                      img.nextElementSibling?.classList.remove('hidden');
+                    }}
+                  />
+                  <!-- Fallback default icon (hidden by default) -->
+                  <div class="hidden h-6 w-6 rounded-md flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  </div>
+                {:else}
+                  <!-- Default icon for unmapped passwords -->
+                  <div class="h-6 w-6 rounded-md flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  </div>
+                {/if}
+                <span class="flex-1 truncate">{password.title}</span>
                 {#if selectedPasswordId === password.id}
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-500 dark:text-blue-400 ml-2 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />

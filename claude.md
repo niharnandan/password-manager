@@ -1,29 +1,22 @@
-# Password Manager - AI Assistant Guide
+# CLAUDE.md
 
-A secure, client-side password manager with end-to-end encryption, WebAuthn biometric authentication, and GitHub cloud sync.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Quick Start
+## Commands
 
 ```bash
-npm run dev      # Start development server
-npm run build    # Build for production
-npm run check    # TypeScript type checking
-npm run lint     # Check code formatting
-npm run format   # Auto-format code
+npm run dev          # Start dev server (Vite)
+npm run build        # Production build (static site via adapter-static)
+npm run check        # TypeScript type checking (svelte-kit sync + svelte-check)
+npm run lint         # Prettier + ESLint check
+npm run format       # Auto-format with Prettier
 ```
 
-## Tech Stack
+No test framework is configured. There are no unit or integration tests.
 
-| Technology   | Version      | Purpose       |
-| ------------ | ------------ | ------------- |
-| SvelteKit    | 2.16         | Framework     |
-| Svelte       | 5.0          | UI Components |
-| TypeScript   | 5.0 (strict) | Type Safety   |
-| TweetNaCl.js | 1.0.3        | Cryptography  |
-| Tailwind CSS | 4.0          | Styling       |
-| Vite         | 6.2          | Build Tool    |
+## Architecture
 
-## Architecture Overview
+Client-side SPA password manager with zero backend. All crypto runs in the browser. Built with SvelteKit (static adapter, output to `build/`), Svelte 5, TypeScript (strict), Tailwind CSS 4, and TweetNaCl.js for encryption.
 
 ### Directory Structure
 
@@ -31,789 +24,253 @@ npm run format   # Auto-format code
 src/
 ├── lib/
 │   ├── components/       # Svelte UI components
-│   │   ├── Login.svelte
-│   │   ├── PasswordManager.svelte
-│   │   ├── PasswordList.svelte
-│   │   └── PasswordForm.svelte
-│   ├── stores/           # Svelte stores (state management)
-│   │   ├── vault.ts      # Core vault state & operations
-│   │   ├── auth.ts       # Authentication state
-│   │   └── github-auth.ts # GitHub sync authentication
-│   ├── types/            # TypeScript interfaces
-│   │   └── password.ts   # PasswordEntry, PasswordVault, EncryptedVault
-│   └── utils/            # Utility functions
-│       ├── crypto.ts     # Encryption/decryption operations
-│       ├── webauthn.ts   # Face ID/Touch ID authentication
-│       ├── security-monitor.ts # Failed login tracking & security logs
-│       ├── github-sync.ts # GitHub API operations
-│       └── local-storage.ts # Local vault caching
+│   │   ├── Login.svelte           # Login flow: password + WebAuthn
+│   │   ├── PasswordManager.svelte # Main UI: navbar, 2-column layout, detail view, modals
+│   │   ├── PasswordList.svelte    # Alphabetically grouped list with favicons
+│   │   └── PasswordForm.svelte    # Add/edit form with generate, copy, show/hide
+│   ├── stores/
+│   │   ├── vault.ts        # Core state: masterKey, vault, CRUD ops, migrations, sync
+│   │   ├── auth.ts         # Authentication state
+│   │   └── github-auth.ts  # GitHub PAT + repo config (stored in localStorage)
+│   ├── types/
+│   │   └── password.ts     # PasswordEntry, PasswordVault, EncryptedVault, LegacyPasswordEntry
+│   └── utils/
+│       ├── crypto.ts           # TweetNaCl secretbox: encrypt, decrypt, deriveKey, generateSalt
+│       ├── webauthn.ts         # WebAuthn registration + authentication
+│       ├── security-monitor.ts # Failed login tracking, device fingerprinting, GitHub logging
+│       ├── github-sync.ts      # GitHub API: upload/download vault.json + security-log.json
+│       ├── local-storage.ts    # Local vault caching (cacheVault, getCachedVault, clearCachedVault)
+│       └── favicon.ts          # Title-to-domain mapping for password entry logos
 ├── routes/
 │   ├── +layout.svelte    # Root layout
-│   └── +page.svelte      # Main page
-├── app.css               # Global styles and animations
+│   └── +page.svelte      # Main page (switches between Login and PasswordManager)
+├── app.css               # Global styles: font, animations, scrollbar, shadows, button effects
 └── app.d.ts              # Global type definitions
 ```
-
-### Key Files
-
-| File                                        | Purpose                                                   |
-| ------------------------------------------- | --------------------------------------------------------- |
-| `src/lib/stores/vault.ts`                   | Core state management, vault CRUD operations, GitHub sync |
-| `src/lib/utils/crypto.ts`                   | XSalsa20-Poly1305 encryption via TweetNaCl                |
-| `src/lib/utils/webauthn.ts`                 | WebAuthn credential registration & authentication         |
-| `src/lib/utils/security-monitor.ts`         | Failed login tracking, security event logging             |
-| `src/lib/types/password.ts`                 | TypeScript interfaces for vault data                      |
-| `src/lib/components/Login.svelte`           | Login flow with WebAuthn & password                       |
-| `src/lib/components/PasswordManager.svelte` | Main password management UI (2-column layout)             |
-| `src/lib/components/PasswordList.svelte`    | Alphabetically grouped password list with animations      |
-| `src/lib/components/PasswordForm.svelte`    | Password add/edit form with copy functionality            |
-| `src/app.css`                               | Global animations and enhanced color styles               |
-
-### UI Architecture
-
-**Layout**: 2-column design (simplified from previous 3-column)
-
-- **Left Panel (40% on desktop)**: Alphabetically grouped password list with sticky letter headers
-- **Right Panel (60% on desktop)**: Password details/form view
-- **Mobile**: Full-width stacked layout
-
-**Design System**:
-
-- **Colors**: Slate-based palette (warmer than gray) with enhanced contrast
-- **Shadows**: Multi-layered (`shadow-sm`, `shadow-md`, `shadow-lg`) with ring borders
-- **Animations**: Smooth transitions (200-300ms) with stagger effects on list items
-- **Interactions**: Hover shadows, active scale effects, focus rings with offsets
-
-**Password List Features**:
-
-- Alphabetical grouping (A-Z, with # for special characters)
-- Sticky letter headers for easy navigation
-- Staggered entrance animations (50ms delay per group)
-- Search-based filtering (no categories)
 
 ### Data Flow
 
 ```
 User Input (Password/WebAuthn)
-         ↓
-    Key Derivation (SHA-512)
-         ↓
-    Master Key (in memory only)
-         ↓
-    Decrypt Vault (XSalsa20-Poly1305)
-         ↓
-    Svelte Stores (reactive state)
-         ↓
-    UI Components
-         ↓
-    On Change: Re-encrypt → Sync to GitHub/localStorage
+     ↓
+Key Derivation: SHA-512 hash (password + salt) → truncated to 32 bytes
+     ↓
+Master Key (in memory only, never persisted)
+     ↓
+Decrypt Vault: XSalsa20-Poly1305 (TweetNaCl secretbox)
+     ↓
+Svelte Stores (reactive state) → vault is a derived store that decrypts on read
+     ↓
+UI Components
+     ↓
+On Change: Re-encrypt → auto-sync to GitHub API + localStorage
 ```
 
-## Coding Conventions
+WebAuthn stores an **encrypted copy** of the master key in localStorage. The encryption key is derived from the WebAuthn credential's public key + a random salt. On biometric auth, the master key is decrypted from this stored copy.
 
-### Naming Conventions
-
-| Type                | Convention           | Example                                 |
-| ------------------- | -------------------- | --------------------------------------- |
-| Functions/Variables | camelCase            | `unlockVault`, `masterKey`              |
-| Types/Interfaces    | PascalCase           | `PasswordEntry`, `EncryptedVault`       |
-| Constants           | SCREAMING_SNAKE_CASE | `MAX_RETRIES`, `SALT_BYTES`             |
-| Files               | kebab-case           | `security-monitor.ts`, `github-sync.ts` |
-
-### Import Ordering
-
-Always order imports in this sequence:
-
-```typescript
-// 1. Svelte imports
-import { onMount } from "svelte";
-import { writable, derived, get } from "svelte/store";
-
-// 2. SvelteKit/App imports
-import { browser } from "$app/environment";
-
-// 3. Store imports
-import { vault, masterKey, isAuthenticated } from "$lib/stores/vault";
-import { isGitHubAuthenticated } from "$lib/stores/github-auth";
-
-// 4. Utility imports
-import { encrypt, decrypt, deriveKey } from "$lib/utils/crypto";
-import { logSecurityEvent } from "$lib/utils/security-monitor";
-
-// 5. Type imports (use `import type`)
-import type {
-  PasswordEntry,
-  PasswordVault,
-  EncryptedVault,
-} from "$lib/types/password";
-```
-
-### TypeScript Patterns
-
-```typescript
-// Use Omit<> for function parameters that exclude certain fields
-async function addPassword(
-  entry: Omit<PasswordEntry, "id" | "created" | "modified">,
-): Promise<void>;
-
-// Use `import type` for type-only imports
-import type { PasswordEntry } from "$lib/types/password";
-
-// Always specify return types for exported functions
-export function encrypt(
-  data: string,
-  key: Uint8Array,
-): { ciphertext: string; nonce: string };
-```
-
-### Svelte Patterns
-
-```svelte
-<script lang="ts">
-  // 1. Imports (following import ordering above)
-  import { onMount } from 'svelte';
-  import { vault } from '$lib/stores/vault';
-  import type { PasswordEntry } from '$lib/types/password';
-
-  // 2. Props
-  export let password: PasswordEntry | undefined = undefined;
-
-  // 3. Local state
-  let isLoading = false;
-  let errorMessage = '';
-
-  // 4. Reactive statements
-  $: filteredPasswords = $vault?.vault?.filter(entry =>
-    entry.title.toLowerCase().includes(searchQuery.toLowerCase())
-  ) || [];
-
-  // 5. Lifecycle hooks
-  onMount(() => {
-    // Component initialization
-  });
-
-  // 6. Functions
-  async function handleSubmit() {
-    // Early return for validation
-    if (!password) return;
-
-    isLoading = true;
-    try {
-      // Logic here
-    } finally {
-      isLoading = false;
-    }
-  }
-</script>
-```
-
-### Store Access Patterns
-
-```typescript
-// Reading store values in components - use $ prefix
-$: currentVault = $vault;
-
-// Reading store values in .ts files - use get()
-import { get } from "svelte/store";
-const currentMasterKey = get(masterKey);
-
-// Updating stores
-masterKey.set(newKey);
-syncStatus.update((s) => ({ ...s, syncing: true }));
-```
-
-## Security Requirements
-
-### Critical Rules - NEVER DO
-
-| Rule                              | Reason                                    |
-| --------------------------------- | ----------------------------------------- |
-| Never persist the master key      | Must only exist in memory                 |
-| Never store unencrypted passwords | All data must be encrypted at rest        |
-| Never skip browser checks         | Crypto operations require browser APIs    |
-| Never log sensitive data          | Passwords, keys must never appear in logs |
-| Never use public GitHub repos     | Encrypted vault must be in private repo   |
-
-### Security Architecture
-
-| Component      | Implementation                          |
-| -------------- | --------------------------------------- |
-| Encryption     | XSalsa20-Poly1305 (TweetNaCl secretbox) |
-| Key Derivation | SHA-512 hash (password + salt)          |
-| Salt           | 24 bytes, random, stored with vault     |
-| Nonce          | 24 bytes, random per encryption         |
-| Master Key     | 32 bytes, in memory only                |
-
-### Security Monitor Behavior
-
-The security monitor in `src/lib/utils/security-monitor.ts`:
-
-1. Tracks failed login attempts (password & WebAuthn)
-2. After **5 failed attempts**:
-   - Logs security event to GitHub (if configured)
-   - Wipes all localStorage
-   - Clears WebAuthn credentials
-   - Reloads the page
-3. Collects device fingerprint info for security logs
-
-```typescript
-// Constants in Login.svelte
-const MAX_RETRIES = 5;
-
-// Retry counts persist in localStorage across page reloads
-let webAuthnRetryCount = parseInt(
-  localStorage.getItem("webauthn_retry_count") || "0",
-  10,
-);
-let passwordRetryCount = parseInt(
-  localStorage.getItem("password_retry_count") || "0",
-  10,
-);
-```
-
-### WebAuthn Flow
-
-1. **Registration** (after successful password login):
-
-   - Generate random challenge
-   - Create credential with `navigator.credentials.create()`
-   - Derive encryption key from public key + random salt
-   - Encrypt master key with derived key
-   - Store encrypted master key in localStorage
-
-2. **Authentication**:
-   - Retrieve stored credential ID
-   - Authenticate with `navigator.credentials.get()`
-   - Reconstruct encryption key from stored public key + salt
-   - Decrypt master key
-   - Load cached vault from localStorage
-
-### Browser Environment Checks
-
-All crypto and storage operations must check for browser environment:
-
-```typescript
-import { browser } from "$app/environment";
-
-export function someOperation(): void {
-  if (!browser) return; // Early return if not in browser
-
-  // Safe to use browser APIs
-}
-```
-
-## GitHub Sync
-
-### Configuration
-
-GitHub sync requires:
-
-- A **private** GitHub repository
-- A Personal Access Token (PAT) with `repo` scope
-- Configuration in `src/lib/stores/github-auth.ts`
-
-Environment variable:
-
-```
-VITE_GITHUB_PAT=your_personal_access_token
-```
-
-### Sync Behavior
-
-| Event              | Action                          |
-| ------------------ | ------------------------------- |
-| Login success      | Download vault from GitHub      |
-| Any vault change   | Auto-upload to GitHub           |
-| GitHub unavailable | Fall back to localStorage cache |
-| Manual sync click  | Fetch latest from GitHub        |
-
-### Conflict Resolution
-
-- **Last write wins**: Local changes overwrite GitHub on sync
-- **Offline support**: Changes cached locally, synced when online
-
-### GitHub Repository Structure
-
-```
-your-private-repo/
-├── vault.json        # Encrypted vault data
-└── security-log.json # Security event logs (optional)
-```
-
-## Animations & Enhanced UI
-
-The app features smooth, professional animations and an enhanced color palette defined in `src/app.css`.
-
-### Custom Animations
-
-```css
-/* Keyframe animations */
-@keyframes slideInRight {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-/* Utility classes */
-.animate-slide-in {
-  animation: slideInRight 0.3s ease-out;
-}
-
-.animate-fade-in {
-  animation: fadeIn 0.2s ease-out;
-}
-```
-
-### Animation Usage
-
-**Component Entrance**:
-
-```svelte
-<!-- Login form slides in -->
-<form class="space-y-6 animate-slide-in">
-
-<!-- Password list fades in -->
-<div class="animate-fade-in">
-
-<!-- Staggered list animation -->
-{#each letters as letter, i}
-  <div class="animate-slide-in" style="animation-delay: {i * 50}ms;">
-{/each}
-```
-
-**Interactive Elements**:
-
-```svelte
-<!-- Buttons with hover/active effects -->
-<button class="transition-all duration-200 ease-in-out
-               hover:shadow-md active:scale-[0.98]
-               focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
-
-<!-- Cards with hover shadow -->
-<div class="shadow-sm hover:shadow-md transition-shadow duration-300">
-```
-
-### Enhanced Color Palette
-
-**Backgrounds**:
-
-- `slate-50` instead of `gray-100` (warmer tone)
-- `slate-100/200` for secondary backgrounds
-- Ring borders: `ring-1 ring-gray-900/5` for subtle depth
-
-**Shadows & Depth**:
-
-```css
-shadow-sm       /* Subtle */
-shadow-md       /* Default cards */
-shadow-lg       /* Elevated elements */
-shadow-2xl      /* Modals */
-```
-
-**Focus States**:
-
-```svelte
-focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-```
-
-**Transitions**:
-
-- All interactive elements: `transition-all duration-200 ease-in-out`
-- Shadows: `transition-shadow duration-300`
-- Colors: `transition-colors duration-200`
-
-### Global Styles (src/app.css)
-
-```css
-/* Smooth scrolling */
-* {
-  scroll-behavior: smooth;
-}
-
-/* Enhanced focus states */
-*:focus-visible {
-  outline: 2px solid rgb(59 130 246 / 0.5);
-  outline-offset: 2px;
-}
-
-/* Auto-transitions on interactive elements */
-button,
-a,
-input,
-textarea,
-select {
-  transition-property:
-    color, background-color, border-color, text-decoration-color, fill, stroke,
-    opacity, box-shadow, transform;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 200ms;
-}
-```
-
-### Copy Button Pattern (PasswordForm)
-
-Shows how to implement copy-to-clipboard with visual feedback:
-
-```typescript
-let passwordCopied = false;
-
-async function copyPassword() {
-  if (formData.password) {
-    await navigator.clipboard.writeText(formData.password);
-    passwordCopied = true;
-    setTimeout(() => {
-      passwordCopied = false;
-    }, 2000);
-  }
-}
-```
-
-```svelte
-<button
-  on:click={copyPassword}
-  disabled={!formData.password}
-  title={passwordCopied ? "Copied!" : "Copy password"}
->
-  {#if passwordCopied}
-    <!-- Green checkmark -->
-  {:else}
-    <!-- Clipboard icon -->
-  {/if}
-</button>
-```
-
-## Component Patterns
-
-### Svelte 5 Component Template
-
-```svelte
-<script lang="ts">
-  import { createEventDispatcher } from 'svelte';
-  import type { PasswordEntry } from '$lib/types/password';
-
-  // Props
-  export let password: PasswordEntry | undefined = undefined;
-  export let onCancel: () => void = () => {};
-
-  // Event dispatcher for custom events
-  const dispatch = createEventDispatcher<{
-    submit: { title: string; password: string };
-  }>();
-
-  // Local state
-  let title = password?.title || '';
-  let passwordValue = password?.password || '';
-
-  // Form submission
-  function handleSubmit() {
-    dispatch('submit', { title, password: passwordValue });
-  }
-</script>
-
-<form on:submit|preventDefault={handleSubmit}>
-  <!-- Form content -->
-</form>
-```
-
-### Event Handling
-
-```svelte
-<!-- Prevent default and stop propagation -->
-<form on:submit|preventDefault={handleSubmit}>
-
-<!-- Custom events from child components -->
-<PasswordForm on:submit={handlePasswordSubmit} />
-
-<!-- In parent, handle CustomEvent -->
-async function handlePasswordSubmit(event: CustomEvent) {
-  const passwordData = event.detail;
-  await addPassword(passwordData);
-}
-```
-
-### Conditional Rendering
-
-```svelte
-{#if isLoading}
-  <LoadingSpinner />
-{:else if errorMessage}
-  <ErrorDisplay message={errorMessage} />
-{:else}
-  <MainContent />
-{/if}
-
-{#each filteredPasswords as entry (entry.id)}
-  <PasswordItem {entry} />
-{/each}
-```
-
-## Common Tasks
-
-### Adding a New Utility Function
-
-1. Create/edit file in `src/lib/utils/`
-2. Add browser check if using browser APIs
-3. Export function with TypeScript types
-4. Import where needed using `$lib/utils/` alias
-
-```typescript
-// src/lib/utils/my-util.ts
-import { browser } from "$app/environment";
-
-export function myUtilFunction(input: string): string {
-  if (!browser) {
-    throw new Error("This function requires browser environment");
-  }
-
-  return input.toUpperCase();
-}
-```
-
-### Adding a New Store
-
-1. Create file in `src/lib/stores/`
-2. Use `writable`, `derived`, or `readable` from svelte/store
-3. Export store and any helper functions
-
-```typescript
-// src/lib/stores/my-store.ts
-import { writable, get } from "svelte/store";
-import { browser } from "$app/environment";
-
-export const myStore = writable<string | null>(null);
-
-export function updateMyStore(value: string): void {
-  if (!browser) return;
-  myStore.set(value);
-}
-
-export function getMyStoreValue(): string | null {
-  return get(myStore);
-}
-```
-
-### Adding a New Component
-
-1. Create `.svelte` file in `src/lib/components/`
-2. Follow the component template structure
-3. Import in parent component
-
-```svelte
-<!-- src/lib/components/MyComponent.svelte -->
-<script lang="ts">
-  export let title: string;
-  export let onClick: () => void = () => {};
-</script>
-
-<button on:click={onClick} class="btn-primary">
-  {title}
-</button>
-```
-
-### Modifying Crypto Operations
-
-When modifying `src/lib/utils/crypto.ts`:
-
-1. **Never change** encryption algorithm without migration plan
-2. Always test with existing encrypted data
-3. Maintain backward compatibility
-4. Update verification markers if vault structure changes
-
-## Testing & Troubleshooting
-
-### Manual Testing Checklist
-
-- [ ] Password login works
-- [ ] WebAuthn registration works
-- [ ] WebAuthn authentication works
-- [ ] Add/edit/delete passwords work
-- [ ] GitHub sync uploads changes
-- [ ] GitHub sync downloads on login
-- [ ] Offline mode falls back to cache
-- [ ] 5 failed attempts triggers wipe
-- [ ] Logout clears memory but keeps cache
-- [ ] "Clear all data" wipes everything
-
-### Browser Support
-
-| Browser     | WebAuthn Support | Notes              |
-| ----------- | ---------------- | ------------------ |
-| Chrome 67+  | Full             | Recommended        |
-| Safari 14+  | Full             | Touch ID / Face ID |
-| Firefox 60+ | Full             |                    |
-| Edge 79+    | Full             |                    |
-
-### Common Issues
-
-| Issue                                                    | Cause                            | Solution                                  |
-| -------------------------------------------------------- | -------------------------------- | ----------------------------------------- |
-| "Crypto operations can only be performed in the browser" | SSR attempting crypto            | Add `if (!browser) return;` check         |
-| WebAuthn fails silently                                  | Document not focused             | Click on page before authenticating       |
-| GitHub sync error                                        | Invalid PAT or repo not private  | Check `VITE_GITHUB_PAT` and repo settings |
-| Vault won't decrypt                                      | Wrong password or corrupted data | Try password again or restore from backup |
-
-### Environment Variables
-
-| Variable          | Required       | Description                  |
-| ----------------- | -------------- | ---------------------------- |
-| `VITE_GITHUB_PAT` | Yes (for sync) | GitHub Personal Access Token |
-
-### Debug Tips
-
-1. Check browser console for errors
-2. Verify localStorage contents: `localStorage.getItem('encrypted_vault')`
-3. Check sync status in UI navbar
-4. Monitor network tab for GitHub API calls
-5. Test WebAuthn in HTTPS or localhost only
-
-## Type Definitions
-
-### Core Types (from `src/lib/types/password.ts`)
+### Type Definitions
 
 ```typescript
 interface PasswordEntry {
-  id: string;
-  title: string;
-  username: string;
-  password: string;
-  url: string;
-  notes: string;
-  created: string; // ISO date string
-  modified: string; // ISO date string
-}
-
-// Legacy type for migration purposes
-interface LegacyPasswordEntry extends PasswordEntry {
-  category?: string;
+  id: string;            // UUID
+  title: string;         // Display name (e.g. "Amazon", "Chase")
+  username: string;      // Login username/email
+  password: string;      // The actual password
+  url: string;           // Website URL
+  notes: string;         // Free-form notes
+  created: string;       // ISO date string
+  modified: string;      // ISO date string
 }
 
 interface PasswordVault {
   version: string;
-  vaultVersion?: number; // Data schema version for migrations (current: 2)
+  vaultVersion?: number;   // Data schema version (current: 2)
   vault: PasswordEntry[];
-  globalNotes: string;
+  globalNotes: string;     // Global notes section
   verification: {
-    marker: string; // "VALID_VAULT"
+    marker: string;        // "VALID_VAULT" - used to verify successful decryption
     version: string;
   };
 }
 
 interface EncryptedVault {
-  salt: string; // Base64 encoded
-  nonce: string; // Base64 encoded
+  salt: string;       // Base64 encoded, 24 bytes
+  nonce: string;      // Base64 encoded, 24 bytes
   ciphertext: string; // Base64 encoded
 }
 ```
 
-### Store Types
+### Store Exports (vault.ts)
 
 ```typescript
-// From src/lib/stores/vault.ts
 export const masterKey = writable<Uint8Array | null>(null);
 export const isAuthenticated = writable<boolean>(false);
 export const encryptedVault = writable<EncryptedVault | null>(null);
-export const vault = derived<..., PasswordVault | null>(...);
-export const syncStatus = writable<{
-  syncing: boolean;
-  lastSync: Date | null;
-  error: string | null;
-}>();
+export const vault = derived(...);  // Decrypts encryptedVault using masterKey
+export const syncStatus = writable<{ syncing: boolean; lastSync: Date | null; error: string | null }>();
+
+// CRUD - all auto-sync to GitHub/localStorage after mutation
+export async function addPassword(entry: Omit<PasswordEntry, 'id' | 'created' | 'modified'>): Promise<void>;
+export async function updatePassword(id: string, updates: Partial<PasswordEntry>): Promise<void>;
+export async function deletePassword(id: string): Promise<void>;
+export async function updateGlobalNotes(notes: string): Promise<void>;
+
+// Auth
+export async function unlockVault(password: string): Promise<boolean>;
+export function lockVault(): void;
+export function clearAllData(): void;
+
+// Sync
+export async function loadVaultFromGitHub(): Promise<void>;
+export function exportVault(): string | null;
+export function importVault(jsonString: string): boolean;
 ```
 
-## Vault Migrations
+### Crypto Specifics (crypto.ts)
 
-The app uses a versioned data schema to handle breaking changes to the vault structure. When the vault format changes, a migration runs automatically on unlock.
+- Encryption: `nacl.secretbox` (XSalsa20-Poly1305)
+- Key derivation: `nacl.hash` (SHA-512) of `password + salt`, truncated to 32 bytes
+- Salt: 24 bytes random (`nacl.randomBytes`)
+- Nonce: 24 bytes random per encryption
+- All values stored as Base64 via `tweetnacl-util`
+- Every exported function checks `if (!browser)` and throws if not in browser
 
-### Current Version: 2
+### Vault Migrations
 
-**Migration History**:
+Schema version tracked in `vaultVersion` field (current: `2`). `migrateVault()` in `vault.ts:35` runs on every `unlockVault()` call. Migrations are idempotent and backward-compatible.
 
-- **v1 → v2**: Removed `category` field from `PasswordEntry` (simplified UI to search-only)
+**History**: v1 → v2: Removed `category` field from PasswordEntry
 
-### Migration Implementation (src/lib/stores/vault.ts:32-60)
+**To add a new migration**:
+1. Increment `CURRENT_VAULT_VERSION` in vault.ts
+2. Add `if (vaultVersion === N)` case in `migrateVault()`
+3. Update types in `password.ts`
+4. Keep all old migration cases
+
+### Security Monitor (security-monitor.ts)
+
+- Tracks failed login attempts (both password and WebAuthn)
+- After **5 failed attempts** (`MAX_RETRIES` in Login.svelte):
+  - Logs detailed security event to GitHub (device fingerprint, browser info, network info)
+  - Wipes all localStorage
+  - Clears WebAuthn credentials
+  - Reloads the page
+- Retry counts persist in localStorage: `webauthn_retry_count`, `password_retry_count`
+
+### WebAuthn Flow
+
+**Registration** (after successful password login):
+1. Generate random challenge → `navigator.credentials.create()`
+2. Derive encryption key from public key + random salt
+3. Encrypt master key with derived key
+4. Store encrypted master key + credential ID + public key + salt in localStorage
+
+**Authentication**:
+1. Retrieve stored credential ID → `navigator.credentials.get()`
+2. Reconstruct encryption key from stored public key + salt
+3. Decrypt master key
+4. Load cached vault from localStorage
+
+localStorage keys: `webauthn_credential_id`, `webauthn_encrypted_key`
+
+### GitHub Sync
+
+- Requires: private repo + PAT with `repo` scope
+- Env var: `VITE_GITHUB_PAT`
+- Config stored in localStorage via `github-auth.ts`
+- On login: downloads `vault.json` from GitHub
+- On any vault change: auto-uploads to GitHub
+- If GitHub unavailable: falls back to localStorage cache
+- Conflict resolution: last write wins
+- Repo structure: `vault.json` (encrypted vault) + `security-log.json` (security events)
+
+### Favicon System (favicon.ts)
+
+Hardcoded `TITLE_TO_DOMAIN` mapping for ~30 password entries. Title matching is **case-sensitive** and **exact match only**.
+
+- `getFaviconUrl(title)` → returns Google Favicon API URL: `https://www.google.com/s2/favicons?domain={domain}&sz=128`
+- `hasFavicon(title)` → checks if title exists in mapping
+- Unmapped titles show a default lock icon
+- To add new entries: edit the `TITLE_TO_DOMAIN` object in `favicon.ts`
+- Used in both `PasswordList.svelte` (24x24 icon) and `PasswordManager.svelte` detail view (32x32 icon)
+- Error handler: if image fails to load, hides img and shows fallback lock icon
+
+## UI Details
+
+### Layout
+
+- **Desktop**: 2-column. Left panel (40%, `md:w-2/5`) = password list. Right panel (60%) = detail/form view.
+- **Mobile**: Full-width stacked. Hamburger button opens slide-out drawer (`animate-slide-in-left`).
+- Password list grouped alphabetically (A-Z, `#` for special chars) with sticky letter headers.
+
+### Design System
+
+- **Font**: DM Sans (imported from Google Fonts in app.css). Must come before `@import "tailwindcss"` or CSS will error.
+- **Colors**: Slate-based palette (`slate-50`, `slate-100/200`). Ring borders: `ring-1 ring-gray-900/5`.
+- **Shadows**: Custom classes `shadow-premium`, `shadow-premium-lg`, `shadow-glow-blue`.
+- **Scrollbar**: Custom styled (global `thin` + enhanced `.custom-scrollbar` class for main panels).
+- **Buttons**: `gradient-blue` + `btn-gradient-shift` + `btn-hover-shine` + `btn-hover-elevate` utility classes.
+- **Transitions**: All interactive elements get 250ms transitions via global CSS rule.
+
+### Animation Classes (app.css)
+
+| Class | Animation | Duration |
+|---|---|---|
+| `animate-slide-in` | Slide from right | 0.4s |
+| `animate-fade-in` | Fade in | 0.3s |
+| `animate-slide-in-left` | Slide from left (mobile drawer) | 0.3s |
+| `animate-scale-in` | Scale up from 0.95 | 0.3s |
+| `animate-slide-up` | Slide up from 10px | 0.3s |
+| `animate-checkmark-draw` | SVG stroke draw (copy feedback) | 0.5s |
+| `animate-checkmark-pop` | Scale bounce (copy feedback circle) | 0.4s |
+| `animate-float` | Vertical float (login card) | 6s loop |
+| `animate-shimmer` | Gradient text shimmer | 3s loop |
+
+### Copy Button Pattern
+
+Copy buttons (username + password) in detail view use entry-scoped state to avoid cross-password contamination:
 
 ```typescript
-const CURRENT_VAULT_VERSION = 2;
+let copiedUsernameId: string | null = null;  // tracks which entry was copied
+let copiedPasswordId: string | null = null;
 
-function migrateVault(vault: PasswordVault): PasswordVault {
-  const vaultVersion = vault.vaultVersion ?? 1;
-
-  if (vaultVersion >= CURRENT_VAULT_VERSION) {
-    return vault; // Already migrated
-  }
-
-  console.log(
-    "Migrating vault from version",
-    vaultVersion,
-    "to",
-    CURRENT_VAULT_VERSION,
-  );
-
-  // Migrate from v1 to v2: Remove category field
-  if (vaultVersion === 1) {
-    const migratedEntries = vault.vault.map((entry: any) => {
-      const { category, ...entryWithoutCategory } = entry;
-      return entryWithoutCategory as PasswordEntry;
-    });
-
-    return {
-      ...vault,
-      vault: migratedEntries,
-      vaultVersion: CURRENT_VAULT_VERSION,
-    };
-  }
-
-  return vault;
+async function copyUsername(username: string, entryId: string) {
+  await navigator.clipboard.writeText(username);
+  copiedUsernameId = entryId;
+  setTimeout(() => {
+    if (copiedUsernameId === entryId) copiedUsernameId = null;
+  }, 2000);
 }
 ```
 
-### Migration Behavior
+Visual feedback: clipboard icon → animated checkmark (stroke draw + circle pop) → reverts after 2s. Icon uses `overflow: visible` on both button and SVG to prevent clipping during animation.
 
-1. **Automatic**: Runs when `unlockVault()` is called
-2. **Idempotent**: Safe to run multiple times (no-op if already migrated)
-3. **Persisted**: Migrated vault is re-encrypted and saved to GitHub/localStorage
-4. **Backward Compatible**: Old vaults (v1) work seamlessly - they just auto-upgrade
-5. **Performance**: Minimal overhead (single version check for already-migrated vaults)
+## Conventions
 
-### Adding New Migrations
+- **Naming**: camelCase functions/vars, PascalCase types, SCREAMING_SNAKE_CASE constants, kebab-case files
+- **Import order**: Svelte → SvelteKit (`$app/`) → stores (`$lib/stores/`) → utils (`$lib/utils/`) → type imports (`import type`)
+- **Store access**: `$store` in `.svelte` files, `get(store)` in `.ts` files
+- **Browser guard**: All crypto/storage/WebAuthn code must check `if (!browser) return` — SvelteKit does SSR
+- **Event handling**: `createEventDispatcher` for child→parent events, `on:submit|preventDefault`
+- **Props**: `export let prop` with TypeScript types
+- **CSS `@import` order in app.css**: Google Fonts `@import url(...)` MUST come before `@import "tailwindcss"` or PostCSS will error
 
-When making breaking changes to the vault schema:
+## Security Rules
 
-1. Increment `CURRENT_VAULT_VERSION`
-2. Add new migration case in `migrateVault()`
-3. Update type definitions
-4. Keep old migration logic for backward compatibility
-5. Test with vaults from all previous versions
+- Never persist the master key to disk/localStorage (memory only)
+- Never store or log unencrypted passwords
+- Never skip `if (!browser)` checks in crypto/storage code
+- Never change the encryption algorithm without a vault migration plan
+- GitHub sync repo must be private
+- `VITE_GITHUB_PAT` env var required for GitHub sync (PAT with `repo` scope)
 
-**Example**:
+## Common Issues
 
-```typescript
-// Future migration example
-if (vaultVersion === 2) {
-  // v2 → v3: Add new field
-  const migratedEntries = vault.vault.map((entry) => ({
-    ...entry,
-    newField: defaultValue,
-  }));
-
-  return {
-    ...vault,
-    vault: migratedEntries,
-    vaultVersion: 3,
-  };
-}
-```
+| Issue | Cause | Fix |
+|---|---|---|
+| `@import must precede all other statements` | CSS import order wrong | Font `@import url(...)` must come before `@import "tailwindcss"` in app.css |
+| `Crypto operations can only be performed in the browser` | SSR attempting crypto | Add `if (!browser) return` check |
+| WebAuthn fails silently | Document not focused | Click on page before authenticating |
+| `Property 'style' does not exist on type 'EventTarget'` | SVG/img error handlers | Cast with `e.currentTarget as HTMLImageElement` |
+| Favicons showing lock icon instead of logo | Title not in mapping | Add entry to `TITLE_TO_DOMAIN` in favicon.ts (case-sensitive exact match) |
+| GitHub sync error | Invalid PAT or repo not private | Check `VITE_GITHUB_PAT` and repo settings |

@@ -1,10 +1,13 @@
+/* Import DM Sans font from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap');
+
 @import "tailwindcss";
 @plugin '@tailwindcss/forms';
 
 /* Modern Font Family */
 * {
   font-family:
-    "Inter",
+    "DM Sans",
     -apple-system,
     BlinkMacSystemFont,
     "Segoe UI",
@@ -60,6 +63,31 @@ body {
     transform: scale(0.95);
   }
   to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes checkmarkDraw {
+  0% {
+    stroke-dashoffset: 50;
+    opacity: 0;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+@keyframes checkmarkPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
     opacity: 1;
     transform: scale(1);
   }
@@ -159,6 +187,14 @@ body {
   animation: scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.animate-checkmark-draw {
+  animation: checkmarkDraw 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-checkmark-pop {
+  animation: checkmarkPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
 .animate-slide-up {
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -166,6 +202,92 @@ body {
 /* Smooth scrolling */
 * {
   scroll-behavior: smooth;
+}
+
+/* Custom Scrollbar Styling */
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(203 213 225 / 0.7) transparent;
+}
+
+/* Webkit browsers (Chrome, Safari, Edge) */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgb(203 213 225 / 0.7);
+  border-radius: 10px;
+  transition: background 0.3s ease;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(148 163 184 / 0.9);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background: rgb(100 116 139);
+}
+
+/* Dark mode scrollbar */
+.dark *::-webkit-scrollbar-thumb {
+  background: rgb(71 85 105 / 0.6);
+}
+
+.dark *::-webkit-scrollbar-thumb:hover {
+  background: rgb(100 116 139 / 0.8);
+}
+
+.dark *::-webkit-scrollbar-thumb:active {
+  background: rgb(148 163 184 / 0.7);
+}
+
+.dark * {
+  scrollbar-color: rgb(71 85 105 / 0.6) transparent;
+}
+
+/* Enhanced scrollbar for password list */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgb(241 245 249 / 0.5);
+  border-radius: 10px;
+  margin: 8px 0;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgb(148 163 184 / 0.8), rgb(100 116 139 / 0.8));
+  border-radius: 10px;
+  border: 2px solid rgb(241 245 249 / 0.5);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgb(100 116 139), rgb(71 85 105));
+  border-color: rgb(226 232 240 / 0.5);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-track {
+  background: rgb(30 41 59 / 0.4);
+  border-radius: 10px;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgb(71 85 105 / 0.8), rgb(51 65 85 / 0.8));
+  border-color: rgb(30 41 59 / 0.4);
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgb(100 116 139), rgb(71 85 105));
+  border-color: rgb(51 65 85 / 0.5);
 }
 
 /* Better focus visible states with premium glow */
