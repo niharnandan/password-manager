@@ -6,7 +6,6 @@
   export let selectedPasswordId: string | null;
   export let onSelectPassword: (id: string) => void;
 
-  // Group passwords by first letter
   $: groupedPasswords = passwords.reduce((groups, password) => {
     const firstLetter = password.title.charAt(0).toUpperCase();
     const letter = /[A-Z]/.test(firstLetter) ? firstLetter : '#';
@@ -18,7 +17,6 @@
     return groups;
   }, {} as Record<string, PasswordEntry[]>);
 
-  // Get sorted letters
   $: letters = Object.keys(groupedPasswords).sort((a, b) => {
     if (a === '#') return 1;
     if (b === '#') return -1;
@@ -32,9 +30,8 @@
   </p>
 {:else}
   <div class="-mx-4 pb-4">
-    {#each letters as letter, i}
+    {#each letters as letter, i (letter)}
       <div class="animate-slide-up {i > 0 ? 'mt-6' : ''}" style="animation-delay: {i * 40}ms;">
-        <!-- Letter header -->
         <div class="sticky top-0 bg-white dark:bg-gray-800 backdrop-blur-md px-4 py-3 z-10 border-b border-gray-200 dark:border-gray-700 shadow-sm">
           <div class="flex items-center gap-2">
             <span class="text-2xl font-bold text-blue-600 dark:text-blue-400">{letter}</span>
@@ -42,9 +39,8 @@
           </div>
         </div>
 
-        <!-- Passwords in this group -->
         <div class="space-y-1.5 mt-2 px-4">
-          {#each groupedPasswords[letter] as password}
+          {#each groupedPasswords[letter] as password (password.id)}
             <button
               on:click={() => onSelectPassword(password.id)}
               class="w-full text-left px-4 py-3 rounded-lg text-sm ease-out group
@@ -55,7 +51,6 @@
               "
             >
               <div class="font-semibold truncate flex items-center gap-3">
-                <!-- Favicon/Logo -->
                 {#if hasFavicon(password.title)}
                   <img
                     src={getFaviconUrl(password.title)}
@@ -68,14 +63,12 @@
                       img.nextElementSibling?.classList.remove('hidden');
                     }}
                   />
-                  <!-- Fallback default icon (hidden by default) -->
                   <div class="hidden h-6 w-6 rounded-md flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 flex items-center justify-center">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
                   </div>
                 {:else}
-                  <!-- Default icon for unmapped passwords -->
                   <div class="h-6 w-6 rounded-md flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 flex items-center justify-center">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />

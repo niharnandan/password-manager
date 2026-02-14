@@ -1,5 +1,5 @@
 /* Import DM Sans font from Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap");
 
 @import "tailwindcss";
 @plugin '@tailwindcss/forms';
@@ -104,32 +104,6 @@ body {
   }
 }
 
-@keyframes gradientShift {
-  0%,
-  100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-}
-
-/* Gradient text animation */
-@keyframes gradientText {
-  0%,
-  100% {
-    background-position: 0% center;
-  }
-  50% {
-    background-position: 100% center;
-  }
-}
-
-.animate-gradient-text {
-  background-size: 200% auto;
-  animation: gradientText 4s linear infinite;
-}
-
 /* Shimmer effect for text */
 @keyframes shimmer {
   0% {
@@ -143,11 +117,27 @@ body {
 .animate-shimmer {
   background: linear-gradient(
     90deg,
-    #3b82f6 0%,
-    #6366f1 25%,
-    #8b5cf6 50%,
-    #6366f1 75%,
-    #3b82f6 100%
+    #d97706 0%,
+    #ea580c 25%,
+    #dc2626 50%,
+    #ea580c 75%,
+    #d97706 100%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 3s linear infinite;
+}
+
+.dark .animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    #fbbf24 0%,
+    #fb923c 25%,
+    #f97316 50%,
+    #fb923c 75%,
+    #fbbf24 100%
   );
   background-size: 200% auto;
   background-clip: text;
@@ -265,7 +255,11 @@ body {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgb(148 163 184 / 0.8), rgb(100 116 139 / 0.8));
+  background: linear-gradient(
+    180deg,
+    rgb(148 163 184 / 0.8),
+    rgb(100 116 139 / 0.8)
+  );
   border-radius: 10px;
   border: 2px solid rgb(241 245 249 / 0.5);
 }
@@ -281,7 +275,11 @@ body {
 }
 
 .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgb(71 85 105 / 0.8), rgb(51 65 85 / 0.8));
+  background: linear-gradient(
+    180deg,
+    rgb(71 85 105 / 0.8),
+    rgb(51 65 85 / 0.8)
+  );
   border-color: rgb(30 41 59 / 0.4);
 }
 
@@ -336,21 +334,6 @@ select {
     0 4px 6px -1px rgb(59 130 246 / 0.1),
     0 2px 4px -2px rgb(59 130 246 / 0.1),
     0 0 0 1px rgb(59 130 246 / 0.05);
-}
-
-/* Loading states */
-.loading-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
 }
 
 /* Hover lift effect */
@@ -413,4 +396,39 @@ select {
 
 .btn-hover-elevate:active {
   transform: translateY(0) scale(0.98);
+}
+
+/* Text glisten effect */
+.text-glisten {
+  position: relative;
+  overflow: hidden;
+}
+
+.text-glisten::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -150%;
+  width: 150%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.4),
+    transparent
+  );
+  transition: left 0.6s ease;
+}
+
+.dark .text-glisten::before {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.15),
+    transparent
+  );
+}
+
+.text-glisten:hover::before {
+  left: 150%;
 }

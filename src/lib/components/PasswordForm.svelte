@@ -7,7 +7,6 @@
 
   const dispatch = createEventDispatcher();
 
-  // Initialize form data
   let formData = {
     title: password?.title || "",
     username: password?.username || "",
@@ -16,7 +15,6 @@
     notes: password?.notes || "",
   };
 
-  // Generate a secure random password
   function generatePassword() {
     const chars =
       "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+~`|}{[]:;?><,./-=";
@@ -31,18 +29,15 @@
     formData.password = newPassword;
   }
 
-  // Handle form submission
   function handleSubmit() {
     dispatch("submit", formData);
   }
 
-  // Toggle password visibility
   let showPassword = false;
   function togglePasswordVisibility() {
     showPassword = !showPassword;
   }
 
-  // Copy password to clipboard
   let passwordCopied = false;
   async function copyPassword() {
     if (formData.password) {
@@ -100,7 +95,6 @@
         class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm hover:shadow-md transition-all duration-300 pr-36"
       />
       <div class="absolute inset-y-0 right-0 flex items-center gap-1">
-        <!-- Eye icon - toggle visibility -->
         <button
           type="button"
           on:click={togglePasswordVisibility}
@@ -133,12 +127,11 @@
           </svg>
         </button>
 
-        <!-- Copy button -->
         <button
           type="button"
           on:click={copyPassword}
           disabled={!formData.password}
-          class="p-1 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200 overflow-visible"
+          class="p-1 w-7 h-7 flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all duration-200"
           class:text-green-500={passwordCopied}
           class:text-gray-400={!passwordCopied}
           class:hover:text-gray-500={!passwordCopied}
@@ -148,14 +141,13 @@
           {#if passwordCopied}
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              class="h-6 w-6"
+              class="h-5 w-5"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
               stroke-width="2.5"
               stroke-linecap="round"
               stroke-linejoin="round"
-              style="overflow: visible;"
             >
               <circle
                 cx="12"
@@ -180,7 +172,6 @@
               viewBox="0 0 20 20"
               fill="currentColor"
             >
-              <!-- Clipboard icon -->
               <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
               <path
                 d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z"
@@ -189,7 +180,6 @@
           {/if}
         </button>
 
-        <!-- Generate button -->
         <button
           type="button"
           on:click={generatePassword}

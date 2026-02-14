@@ -72,30 +72,30 @@ WebAuthn stores an **encrypted copy** of the master key in localStorage. The enc
 
 ```typescript
 interface PasswordEntry {
-  id: string;            // UUID
-  title: string;         // Display name (e.g. "Amazon", "Chase")
-  username: string;      // Login username/email
-  password: string;      // The actual password
-  url: string;           // Website URL
-  notes: string;         // Free-form notes
-  created: string;       // ISO date string
-  modified: string;      // ISO date string
+  id: string; // UUID
+  title: string; // Display name (e.g. "Amazon", "Chase")
+  username: string; // Login username/email
+  password: string; // The actual password
+  url: string; // Website URL
+  notes: string; // Free-form notes
+  created: string; // ISO date string
+  modified: string; // ISO date string
 }
 
 interface PasswordVault {
   version: string;
-  vaultVersion?: number;   // Data schema version (current: 2)
+  vaultVersion?: number; // Data schema version (current: 2)
   vault: PasswordEntry[];
-  globalNotes: string;     // Global notes section
+  globalNotes: string; // Global notes section
   verification: {
-    marker: string;        // "VALID_VAULT" - used to verify successful decryption
+    marker: string; // "VALID_VAULT" - used to verify successful decryption
     version: string;
   };
 }
 
 interface EncryptedVault {
-  salt: string;       // Base64 encoded, 24 bytes
-  nonce: string;      // Base64 encoded, 24 bytes
+  salt: string; // Base64 encoded, 24 bytes
+  nonce: string; // Base64 encoded, 24 bytes
   ciphertext: string; // Base64 encoded
 }
 ```
@@ -142,6 +142,7 @@ Schema version tracked in `vaultVersion` field (current: `2`). `migrateVault()` 
 **History**: v1 → v2: Removed `category` field from PasswordEntry
 
 **To add a new migration**:
+
 1. Increment `CURRENT_VAULT_VERSION` in vault.ts
 2. Add `if (vaultVersion === N)` case in `migrateVault()`
 3. Update types in `password.ts`
@@ -160,12 +161,14 @@ Schema version tracked in `vaultVersion` field (current: `2`). `migrateVault()` 
 ### WebAuthn Flow
 
 **Registration** (after successful password login):
+
 1. Generate random challenge → `navigator.credentials.create()`
 2. Derive encryption key from public key + random salt
 3. Encrypt master key with derived key
 4. Store encrypted master key + credential ID + public key + salt in localStorage
 
 **Authentication**:
+
 1. Retrieve stored credential ID → `navigator.credentials.get()`
 2. Reconstruct encryption key from stored public key + salt
 3. Decrypt master key
@@ -214,24 +217,24 @@ Hardcoded `TITLE_TO_DOMAIN` mapping for ~30 password entries. Title matching is 
 
 ### Animation Classes (app.css)
 
-| Class | Animation | Duration |
-|---|---|---|
-| `animate-slide-in` | Slide from right | 0.4s |
-| `animate-fade-in` | Fade in | 0.3s |
-| `animate-slide-in-left` | Slide from left (mobile drawer) | 0.3s |
-| `animate-scale-in` | Scale up from 0.95 | 0.3s |
-| `animate-slide-up` | Slide up from 10px | 0.3s |
-| `animate-checkmark-draw` | SVG stroke draw (copy feedback) | 0.5s |
-| `animate-checkmark-pop` | Scale bounce (copy feedback circle) | 0.4s |
-| `animate-float` | Vertical float (login card) | 6s loop |
-| `animate-shimmer` | Gradient text shimmer | 3s loop |
+| Class                    | Animation                           | Duration |
+| ------------------------ | ----------------------------------- | -------- |
+| `animate-slide-in`       | Slide from right                    | 0.4s     |
+| `animate-fade-in`        | Fade in                             | 0.3s     |
+| `animate-slide-in-left`  | Slide from left (mobile drawer)     | 0.3s     |
+| `animate-scale-in`       | Scale up from 0.95                  | 0.3s     |
+| `animate-slide-up`       | Slide up from 10px                  | 0.3s     |
+| `animate-checkmark-draw` | SVG stroke draw (copy feedback)     | 0.5s     |
+| `animate-checkmark-pop`  | Scale bounce (copy feedback circle) | 0.4s     |
+| `animate-float`          | Vertical float (login card)         | 6s loop  |
+| `animate-shimmer`        | Gradient text shimmer               | 3s loop  |
 
 ### Copy Button Pattern
 
 Copy buttons (username + password) in detail view use entry-scoped state to avoid cross-password contamination:
 
 ```typescript
-let copiedUsernameId: string | null = null;  // tracks which entry was copied
+let copiedUsernameId: string | null = null; // tracks which entry was copied
 let copiedPasswordId: string | null = null;
 
 async function copyUsername(username: string, entryId: string) {
@@ -266,11 +269,11 @@ Visual feedback: clipboard icon → animated checkmark (stroke draw + circle pop
 
 ## Common Issues
 
-| Issue | Cause | Fix |
-|---|---|---|
-| `@import must precede all other statements` | CSS import order wrong | Font `@import url(...)` must come before `@import "tailwindcss"` in app.css |
-| `Crypto operations can only be performed in the browser` | SSR attempting crypto | Add `if (!browser) return` check |
-| WebAuthn fails silently | Document not focused | Click on page before authenticating |
-| `Property 'style' does not exist on type 'EventTarget'` | SVG/img error handlers | Cast with `e.currentTarget as HTMLImageElement` |
-| Favicons showing lock icon instead of logo | Title not in mapping | Add entry to `TITLE_TO_DOMAIN` in favicon.ts (case-sensitive exact match) |
-| GitHub sync error | Invalid PAT or repo not private | Check `VITE_GITHUB_PAT` and repo settings |
+| Issue                                                    | Cause                           | Fix                                                                         |
+| -------------------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------- |
+| `@import must precede all other statements`              | CSS import order wrong          | Font `@import url(...)` must come before `@import "tailwindcss"` in app.css |
+| `Crypto operations can only be performed in the browser` | SSR attempting crypto           | Add `if (!browser) return` check                                            |
+| WebAuthn fails silently                                  | Document not focused            | Click on page before authenticating                                         |
+| `Property 'style' does not exist on type 'EventTarget'`  | SVG/img error handlers          | Cast with `e.currentTarget as HTMLImageElement`                             |
+| Favicons showing lock icon instead of logo               | Title not in mapping            | Add entry to `TITLE_TO_DOMAIN` in favicon.ts (case-sensitive exact match)   |
+| GitHub sync error                                        | Invalid PAT or repo not private | Check `VITE_GITHUB_PAT` and repo settings                                   |

@@ -41,9 +41,18 @@ interface BrowserInfo {
   timezoneOffset: number;
 }
 
+interface UAClientHints {
+  architecture?: string;
+  bitness?: string;
+  brands?: Array<{ brand: string; version: string }>;
+  mobile?: boolean;
+  platform?: string;
+  platformVersion?: string;
+}
+
 interface NetworkInfo {
   ipAddress: string;
-  userAgentClientHints?: any;
+  userAgentClientHints?: UAClientHints | null;
   effectiveType?: string;
   downlink?: number;
   rtt?: number;
@@ -74,10 +83,8 @@ interface SecurityInfo {
   sessionTerminated: boolean;
 }
 
-// Get external IP address
 async function getExternalIP(): Promise<string> {
   try {
-    // Try multiple IP services for reliability
     const services = [
       "https://api.ipify.org?format=json",
       "https://ipapi.co/json/",
@@ -88,13 +95,11 @@ async function getExternalIP(): Promise<string> {
       try {
         const response = await fetch(service);
         const data = await response.json();
-
-        // Different services return IP in different formats
         if (data.ip) return data.ip;
         if (data.origin) return data.origin;
         if (data.query) return data.query;
-      } catch (e) {
-        continue; // Try next service
+      } catch {
+        continue;
       }
     }
 
@@ -105,7 +110,6 @@ async function getExternalIP(): Promise<string> {
   }
 }
 
-// Detect browser name and version
 function getBrowserInfo(): { name: string; version: string; engine: string } {
   const ua = navigator.userAgent;
 
@@ -138,12 +142,21 @@ function getBrowserInfo(): { name: string; version: string; engine: string } {
   return { name: browserName, version: browserVersion, engine: browserEngine };
 }
 
-// Get network connection info
 function getNetworkInfo(): Partial<NetworkInfo> {
+  interface NetworkConnection {
+    effectiveType?: string;
+    downlink?: number;
+    rtt?: number;
+  }
+
+  const nav = navigator as Navigator & {
+    connection?: NetworkConnection;
+    mozConnection?: NetworkConnection;
+    webkitConnection?: NetworkConnection;
+  };
+
   const connection =
-    (navigator as any).connection ||
-    (navigator as any).mozConnection ||
-    (navigator as any).webkitConnection;
+    nav.connection || nav.mozConnection || nav.webkitConnection;
 
   return {
     effectiveType: connection?.effectiveType || "Unknown",
@@ -152,20 +165,29 @@ function getNetworkInfo(): Partial<NetworkInfo> {
   };
 }
 
-// Get user agent client hints (if available)
-async function getUserAgentClientHints(): Promise<any> {
+async function getUserAgentClientHints(): Promise<UAClientHints | null> {
   try {
     if ("userAgentData" in navigator) {
-      const uaData = (navigator as any).userAgentData;
-      const highEntropyValues = await uaData.getHighEntropyValues([
-        "architecture",
-        "bitness",
-        "brands",
-        "mobile",
-        "platform",
-        "platformVersion",
-      ]);
-      return highEntropyValues;
+      interface NavigatorUAData {
+        getHighEntropyValues(hints: string[]): Promise<UAClientHints>;
+      }
+
+      const nav = navigator as Navigator & {
+        userAgentData?: NavigatorUAData;
+      };
+
+      const uaData = nav.userAgentData;
+      if (uaData) {
+        const highEntropyValues = await uaData.getHighEntropyValues([
+          "architecture",
+          "bitness",
+          "brands",
+          "mobile",
+          "platform",
+          "platformVersion",
+        ]);
+        return highEntropyValues;
+      }
     }
   } catch (error) {
     console.warn("Failed to get user agent client hints:", error);
@@ -173,7 +195,6 @@ async function getUserAgentClientHints(): Promise<any> {
   return null;
 }
 
-// Collect comprehensive device and browser information
 async function collectDeviceInfo(): Promise<{
   device: DeviceInfo;
   browser: BrowserInfo;
@@ -238,7 +259,6 @@ async function collectDeviceInfo(): Promise<{
   return { device, browser: browserData, network, location };
 }
 
-// Get session information
 function getSessionInfo(
   previousAttempts: Array<{
     timestamp: string;
@@ -258,7 +278,6 @@ function getSessionInfo(
   };
 }
 
-// Upload security event to GitHub
 async function uploadSecurityEvent(event: SecurityEvent): Promise<boolean> {
   try {
     const config = getGitHubConfig();
@@ -267,8 +286,16 @@ async function uploadSecurityEvent(event: SecurityEvent): Promise<boolean> {
       return false;
     }
 
-    // Get current security log
-    let currentLog: any = {
+    interface SecurityLog {
+      securityEvents: SecurityEvent[];
+      metadata: {
+        version: string;
+        totalEvents: number;
+        lastUpdated?: string;
+      };
+    }
+
+    let currentLog: SecurityLog = {
       securityEvents: [],
       metadata: { version: "1.0", totalEvents: 0 },
     };
@@ -289,16 +316,14 @@ async function uploadSecurityEvent(event: SecurityEvent): Promise<boolean> {
         const content = atob(data.content);
         currentLog = JSON.parse(content);
       }
-    } catch (e) {
+    } catch {
       console.log("Creating new security log file");
     }
 
-    // Add new event
     currentLog.securityEvents.push(event);
     currentLog.metadata.lastUpdated = event.timestamp;
     currentLog.metadata.totalEvents = currentLog.securityEvents.length;
 
-    // Keep only last 100 events to prevent file from growing too large
     if (currentLog.securityEvents.length > 100) {
       currentLog.securityEvents = currentLog.securityEvents.slice(-100);
       currentLog.metadata.totalEvents = 100;
@@ -307,7 +332,6 @@ async function uploadSecurityEvent(event: SecurityEvent): Promise<boolean> {
     const updatedContent = JSON.stringify(currentLog, null, 2);
     const encodedContent = btoa(updatedContent);
 
-    // Get current file SHA if it exists
     let sha = "";
     try {
       const response = await fetch(
@@ -324,11 +348,10 @@ async function uploadSecurityEvent(event: SecurityEvent): Promise<boolean> {
         const data = await response.json();
         sha = data.sha;
       }
-    } catch (e) {
-      // File doesn't exist, will create new
+    } catch {
+      // File doesn't exist yet
     }
 
-    // Upload/update the file
     const uploadResponse = await fetch(
       `https://api.github.com/repos/${config.owner}/${config.repo}/contents/security-log.json`,
       {
@@ -360,7 +383,6 @@ async function uploadSecurityEvent(event: SecurityEvent): Promise<boolean> {
   }
 }
 
-// Main function to log security event
 export async function logSecurityEvent(
   attemptsCount: number,
   previousAttempts: Array<{
@@ -408,7 +430,6 @@ export async function logSecurityEvent(
   }
 }
 
-// Track login attempts in session storage
 export function trackLoginAttempt(
   method: "password" | "webauthn",
   result: string,
@@ -425,14 +446,12 @@ export function trackLoginAttempt(
       result,
     });
 
-    // Keep only last 10 attempts
     if (attempts.length > 10) {
       attempts.splice(0, attempts.length - 10);
     }
 
     sessionStorage.setItem("login_attempts", JSON.stringify(attempts));
 
-    // Set session start time if not already set
     if (!localStorage.getItem("session_start")) {
       localStorage.setItem("session_start", Date.now().toString());
     }
@@ -441,7 +460,6 @@ export function trackLoginAttempt(
   }
 }
 
-// Get tracked login attempts
 export function getTrackedAttempts(): Array<{
   timestamp: string;
   method: "password" | "webauthn";

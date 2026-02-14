@@ -1,59 +1,31 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import {
     vault,
     lockVault,
-    clearAllData,
     addPassword,
     updatePassword,
     deletePassword,
-    updateGlobalNotes,
-    exportVault,
-    importVault,
-    unlockVault,
     syncStatus,
     loadVaultFromGitHub,
   } from "$lib/stores/vault";
-  import { clearWebAuthnCredential } from "$lib/utils/webauthn";
   import { isGitHubAuthenticated } from "$lib/stores/github-auth";
   import PasswordList from "./PasswordList.svelte";
   import PasswordForm from "./PasswordForm.svelte";
-  import { slide } from "svelte/transition";
   import { getFaviconUrl, hasFavicon } from "$lib/utils/favicon";
 
-  // State for the UI
   let selectedPasswordId: string | null = null;
-  let isAddingPassword: boolean = false;
-  let isEditingPassword: boolean = false;
-  let searchQuery: string = "";
-  let showingNotes: boolean = false; // New state for notes view
-  let mobileMenuOpen: boolean = false; // Mobile sidebar drawer state
+  let isAddingPassword = false;
+  let isEditingPassword = false;
+  let searchQuery = "";
+  let mobileMenuOpen = false;
+  let showPassword = false;
+  let copiedUsernameId: string | null = null;
+  let copiedPasswordId: string | null = null;
 
-  // Notes editing state
-  let isEditingNotes: boolean = false;
-  let notesEditContent: string = "";
-
-  // Import/Export state
-  let showImportModal: boolean = false;
-  let importFile: File | null = null;
-  let importPassword: string = "";
-  let importError: string = "";
-  let showImportConfirmation: boolean = false;
-  let importFileContent: string = "";
-
-  // Password visibility state
-  let showPassword: boolean = false;
-
-  // Toggle password visibility
   function togglePasswordVisibility() {
     showPassword = !showPassword;
   }
 
-  // Copy feedback state - track which password entry was copied
-  let copiedUsernameId: string | null = null;
-  let copiedPasswordId: string | null = null;
-
-  // Copy username to clipboard
   async function copyUsername(username: string, entryId: string) {
     await navigator.clipboard.writeText(username);
     copiedUsernameId = entryId;
@@ -64,7 +36,6 @@
     }, 2000);
   }
 
-  // Copy password to clipboard
   async function copyPasswordField(password: string, entryId: string) {
     await navigator.clipboard.writeText(password);
     copiedPasswordId = entryId;
@@ -75,7 +46,6 @@
     }, 2000);
   }
 
-  // Manual sync - fetch latest passwords from GitHub
   async function handleSyncClick() {
     if (!$isGitHubAuthenticated || $syncStatus.syncing) return;
 
@@ -87,7 +57,6 @@
     }
   }
 
-  // Derived state for filtering and sorting passwords
   $: filteredPasswords =
     $vault?.vault
       ?.filter((entry) => {
@@ -104,65 +73,32 @@
         a.title.toLowerCase().localeCompare(b.title.toLowerCase()),
       ) || [];
 
-  // Handle notes selection
-  function selectNotes() {
-    showingNotes = true;
-    selectedPasswordId = null;
-    isAddingPassword = false;
-    isEditingPassword = false;
-  }
-
-  // Password selection handler
   function selectPassword(id: string) {
     selectedPasswordId = id;
-    showingNotes = false;
     isAddingPassword = false;
     isEditingPassword = false;
-    showPassword = false; // Reset password visibility when selecting a new password
-    mobileMenuOpen = false; // Close mobile menu when password is selected
+    showPassword = false;
+    mobileMenuOpen = false;
   }
 
-  // Start adding a new password
   function startAddPassword() {
     selectedPasswordId = null;
-    showingNotes = false;
     isAddingPassword = true;
     isEditingPassword = false;
-    mobileMenuOpen = false; // Close mobile menu when adding a new password
+    mobileMenuOpen = false;
   }
 
-  // Start editing a password
   function startEditPassword() {
     if (selectedPasswordId) {
       isEditingPassword = true;
       isAddingPassword = false;
-      showingNotes = false;
     }
   }
 
-  // Cancel form
   function cancelForm() {
     isAddingPassword = false;
     isEditingPassword = false;
   }
-
-  // Notes editing functions
-  function startEditNotes() {
-    isEditingNotes = true;
-    notesEditContent = $vault?.globalNotes || "";
-  }
-
-  async function saveNotes() {
-    await updateGlobalNotes(notesEditContent);
-    isEditingNotes = false;
-  }
-
-  function cancelEditNotes() {
-    isEditingNotes = false;
-    notesEditContent = "";
-  }
-
-  // Handle password form submission
   async function handlePasswordSubmit(event: CustomEvent) {
     const passwordData = event.detail;
 
@@ -187,7 +123,6 @@
     }
   }
 
-  // Handle password deletion
   async function handleDeletePassword() {
     if (selectedPasswordId) {
       await deletePassword(selectedPasswordId);
@@ -195,121 +130,8 @@
     }
   }
 
-  // Handle logout
   function handleLogout() {
     lockVault();
-  }
-
-  // Handle complete logout (clear all data including cache)
-  function handleCompleteLogout() {
-    clearAllData();
-    clearWebAuthnCredential();
-  }
-
-  // Export vault to file
-  function handleExportVault() {
-    const vaultData = exportVault();
-    if (!vaultData) return;
-
-    const blob = new Blob([vaultData], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `vault-backup-${new Date().toISOString().split("T")[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-
-    // Clean up
-    URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-  }
-
-  // Handle file selection for import
-  function handleFileSelect(event: Event) {
-    const input = event.target as HTMLInputElement;
-    if (input.files && input.files.length > 0) {
-      importFile = input.files[0];
-    }
-  }
-
-  // Start import process
-  function startImport() {
-    showImportModal = true;
-    importFile = null;
-    importPassword = "";
-    importError = "";
-    showImportConfirmation = false;
-    importFileContent = "";
-  }
-
-  // Process the selected import file
-  function processImportFile() {
-    if (!importFile) {
-      importError = "Please select a vault file to import";
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const content = e.target?.result as string;
-        // Basic validation - check if it's JSON
-        JSON.parse(content);
-        importFileContent = content;
-        showImportConfirmation = true;
-      } catch (error) {
-        importError = "The selected file is not a valid vault file";
-        console.error("Error parsing import file:", error);
-      }
-    };
-    reader.onerror = () => {
-      importError = "Error reading the file";
-    };
-    reader.readAsText(importFile);
-  }
-
-  // Verify password and import vault
-  async function confirmImport() {
-    if (!importPassword) {
-      importError = "Please enter your master password";
-      return;
-    }
-
-    try {
-      // First verify the password is correct
-      const unlockSuccess = await unlockVault(importPassword);
-      if (unlockSuccess) {
-        // Then import the vault data
-        if (importVault(importFileContent)) {
-          // Close the modal
-          showImportModal = false;
-          // Reset state
-          importFile = null;
-          importPassword = "";
-          importError = "";
-          showImportConfirmation = false;
-          importFileContent = "";
-        } else {
-          importError = "Failed to import vault data";
-        }
-      } else {
-        importError = "Incorrect master password";
-      }
-    } catch (error) {
-      importError = "An error occurred during import";
-      console.error("Import error:", error);
-    }
-  }
-
-  // Cancel import
-  function cancelImport() {
-    showImportModal = false;
-    importFile = null;
-    importPassword = "";
-    importError = "";
-    showImportConfirmation = false;
-    importFileContent = "";
   }
 </script>
 
@@ -318,8 +140,8 @@
   <nav
     class="bg-gradient-to-r from-white via-white to-slate-50/50 dark:from-gray-800 dark:via-gray-800 dark:to-gray-850 shadow-premium-lg border-b border-gray-200/80 dark:border-gray-700/80 backdrop-blur-sm transition-all duration-300"
   >
-    <div class="w-full mx-auto px-4">
-      <div class="flex justify-between h-16">
+    <div class="w-full mx-auto px-3">
+      <div class="flex justify-between h-14">
         <div class="flex items-center">
           <!-- Hamburger menu button (mobile only) -->
           <button
@@ -342,7 +164,7 @@
               />
             </svg>
           </button>
-          <h1 class="text-xl font-bold text-gray-900 dark:text-gray-100">
+          <h1 class="text-2xl font-bold animate-shimmer">
             Secure Password Manager
           </h1>
         </div>
@@ -656,10 +478,7 @@
     </div>
   </nav>
 
-  <!-- Main content -->
   <div class="flex-1 flex flex-row overflow-hidden relative min-h-0">
-    {#if !showingNotes}
-      <!-- Password list - 40% width on desktop, hidden on mobile (mobile uses overlay drawer) -->
       <div
         class="bg-gradient-to-b from-white via-white to-slate-50/30 dark:from-gray-800 dark:via-gray-800 dark:to-gray-850 border-r border-gray-200 dark:border-gray-700 overflow-y-auto hidden md:block md:w-2/5 shadow-premium transition-all duration-300 custom-scrollbar"
       >
@@ -672,7 +491,7 @@
         </div>
       </div>
 
-      <!-- Password details/form - 60% width on desktop, full width on mobile -->
+      <!-- Password details/form -->
       <div
         class="flex-1 bg-gradient-to-br from-slate-50 via-white to-slate-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-850 overflow-y-auto p-4 md:p-8 transition-all duration-300 animate-fade-in custom-scrollbar"
       >
@@ -712,10 +531,9 @@
             on:submit={handlePasswordSubmit}
           />
         {:else if selectedPasswordId && $vault?.vault}
-          {#each $vault.vault.filter((entry) => entry.id === selectedPasswordId) as entry}
+          {#each $vault.vault.filter((entry) => entry.id === selectedPasswordId) as entry (entry.id)}
             <div class="mb-4 flex justify-between items-center">
-              <div class="flex items-center gap-3">
-                <!-- Favicon/Logo -->
+              <div class="flex items-center gap-3 text-glisten">
                 {#if hasFavicon(entry.title)}
                   <img
                     src={getFaviconUrl(entry.title)}
@@ -728,14 +546,12 @@
                       img.nextElementSibling?.classList.remove('hidden');
                     }}
                   />
-                  <!-- Fallback default icon (hidden by default) -->
                   <div class="hidden h-8 w-8 rounded-lg flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 flex items-center justify-center shadow-sm">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
                   </div>
                 {:else}
-                  <!-- Default icon for unmapped passwords -->
                   <div class="h-8 w-8 rounded-lg flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 flex items-center justify-center shadow-sm">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -793,7 +609,7 @@
             </div>
 
             <div
-              class="bg-gradient-to-br from-white via-white to-slate-50/40 dark:from-gray-800/80 dark:via-gray-800/60 dark:to-gray-700/50 rounded-xl p-6 mb-6 shadow-premium-lg ring-1 ring-gray-900/5 dark:ring-white/10 hover-lift hover:shadow-glow-blue transition-all duration-300 backdrop-blur-sm"
+              class="bg-gradient-to-br from-white via-white to-slate-50/40 dark:from-gray-800/80 dark:via-gray-800/60 dark:to-gray-700/50 rounded-xl p-6 mb-6 shadow-premium-lg ring-1 ring-gray-900/5 dark:ring-white/10 transition-shadow duration-300 backdrop-blur-sm"
             >
               <div class="grid grid-cols-1 gap-4">
                 <div>
@@ -808,9 +624,8 @@
                     >
                       {entry.username}
                     </p>
-                    <!-- svelte-ignore a11y_consider_explicit_label -->
                     <button
-                      class="ml-2 flex-shrink-0 transition-all duration-200 p-0.5 overflow-visible"
+                      class="ml-2 flex-shrink-0 transition-all duration-200 p-0.5 w-6 h-6 flex items-center justify-center cursor-pointer"
                       class:text-green-500={copiedUsernameId === entry.id}
                       class:text-gray-400={copiedUsernameId !== entry.id}
                       class:hover:text-gray-500={copiedUsernameId !== entry.id}
@@ -824,14 +639,13 @@
                       {#if copiedUsernameId === entry.id}
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
-                          class="h-6 w-6"
+                          class="h-5 w-5"
                           viewBox="0 0 24 24"
                           fill="none"
                           stroke="currentColor"
                           stroke-width="2.5"
                           stroke-linecap="round"
                           stroke-linejoin="round"
-                          style="overflow: visible;"
                         >
                           <circle
                             cx="12"
@@ -881,15 +695,12 @@
                       {showPassword ? entry.password : "••••••••••••"}
                     </p>
                     <div class="ml-2 flex space-x-1">
-                      <!-- Eye icon to toggle password visibility -->
-                      <!-- svelte-ignore a11y_consider_explicit_label -->
                       <button
                         class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 flex-shrink-0"
                         on:click={togglePasswordVisibility}
                         title={showPassword ? "Hide password" : "Show password"}
                       >
                         {#if showPassword}
-                          <!-- Eye slash (hide) icon -->
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
                             class="h-5 w-5"
@@ -905,7 +716,6 @@
                             />
                           </svg>
                         {:else}
-                          <!-- Eye (show) icon -->
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
                             class="h-5 w-5"
@@ -929,10 +739,8 @@
                         {/if}
                       </button>
 
-                      <!-- Copy button -->
-                      <!-- svelte-ignore a11y_consider_explicit_label -->
                       <button
-                        class="flex-shrink-0 transition-all duration-200 p-0.5 overflow-visible"
+                        class="flex-shrink-0 transition-all duration-200 p-0.5 w-6 h-6 flex items-center justify-center cursor-pointer"
                         class:text-green-500={copiedPasswordId === entry.id}
                         class:text-gray-400={copiedPasswordId !== entry.id}
                         class:hover:text-gray-500={copiedPasswordId !==
@@ -948,14 +756,13 @@
                         {#if copiedPasswordId === entry.id}
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
-                            class="h-6 w-6"
+                            class="h-5 w-5"
                             viewBox="0 0 24 24"
                             fill="none"
                             stroke="currentColor"
                             stroke-width="2.5"
                             stroke-linecap="round"
                             stroke-linejoin="round"
-                            style="overflow: visible;"
                           >
                             <circle
                               cx="12"
@@ -1067,68 +874,11 @@
           </div>
         {/if}
       </div>
-    {:else}
-      <!-- Notes section - full width when selected -->
-      <div class="flex-1 bg-white dark:bg-gray-800 overflow-y-auto p-4 md:p-6">
-        <div class="mb-4 flex justify-between items-center">
-          <h2 class="text-lg font-medium text-gray-900 dark:text-white">
-            Global Notes
-          </h2>
-          {#if !isEditingNotes}
-            <button
-              on:click={startEditNotes}
-              class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              Edit
-            </button>
-          {:else}
-            <div class="flex space-x-2">
-              <button
-                on:click={saveNotes}
-                class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-              >
-                Save
-              </button>
-              <button
-                on:click={cancelEditNotes}
-                class="inline-flex items-center px-3 py-1 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                Cancel
-              </button>
-            </div>
-          {/if}
-        </div>
-
-        {#if isEditingNotes}
-          <!-- svelte-ignore a11y_autofocus -->
-          <!-- svelte-ignore element_invalid_self_closing_tag -->
-          <textarea
-            bind:value={notesEditContent}
-            rows="20"
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm break-words"
-            placeholder="Write your notes here..."
-            autofocus
-          />
-        {:else}
-          <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 min-h-96">
-            {#if $vault?.globalNotes}
-              <pre
-                class="whitespace-pre-wrap break-words text-sm text-gray-900 dark:text-white font-mono">{$vault.globalNotes}</pre>
-            {:else}
-              <p class="text-gray-500 dark:text-gray-400 text-sm">
-                No notes yet. Click "Edit" to add some notes.
-              </p>
-            {/if}
-          </div>
-        {/if}
-      </div>
-    {/if}
   </div>
 
   <!-- Mobile password list overlay drawer -->
-  {#if mobileMenuOpen && !showingNotes}
+  {#if mobileMenuOpen}
     <div class="fixed inset-0 z-40 md:hidden">
-      <!-- Backdrop -->
       <div
         class="absolute inset-0 bg-black bg-opacity-50 transition-opacity duration-300"
         on:click={() => (mobileMenuOpen = false)}
@@ -1138,12 +888,10 @@
         aria-label="Close menu"
       ></div>
 
-      <!-- Slide-out panel -->
       <div
         class="absolute left-0 top-0 bottom-0 w-4/5 max-w-sm bg-gradient-to-b from-white via-white to-slate-50/30 dark:from-gray-800 dark:via-gray-800 dark:to-gray-850 shadow-premium-lg animate-slide-in-left overflow-y-auto border-r border-gray-200 dark:border-gray-700 custom-scrollbar"
       >
         <div class="p-4 pb-0">
-          <!-- Close button -->
           <div class="flex justify-between items-center mb-4">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
               All Passwords
@@ -1175,96 +923,6 @@
             {selectedPasswordId}
             onSelectPassword={selectPassword}
           />
-        </div>
-      </div>
-    </div>
-  {/if}
-
-  <!-- Import Modal -->
-  {#if showImportModal}
-    <div
-      class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
-    >
-      <div
-        class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full"
-      >
-        <div class="p-6">
-          <h2 class="text-xl font-bold mb-4 text-gray-900 dark:text-white">
-            {showImportConfirmation ? "Confirm Import" : "Import Vault"}
-          </h2>
-
-          {#if showImportConfirmation}
-            <p class="mb-4 text-gray-700 dark:text-gray-300">
-              Warning: Importing a vault will replace all your current
-              passwords. This action cannot be undone.
-            </p>
-            <div class="mb-4">
-              <label
-                for="import-password"
-                class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
-                Enter your master password to confirm
-              </label>
-              <input
-                id="import-password"
-                type="password"
-                bind:value={importPassword}
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Master password"
-              />
-            </div>
-          {:else}
-            <p class="mb-4 text-gray-700 dark:text-gray-300">
-              Import an encrypted vault backup to restore your passwords.
-            </p>
-            <div class="mb-4">
-              <!-- svelte-ignore a11y_label_has_associated_control -->
-              <label
-                class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
-                Select vault backup file
-              </label>
-              <input
-                type="file"
-                accept=".json"
-                on:change={handleFileSelect}
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          {/if}
-
-          {#if importError}
-            <p class="mb-4 text-sm text-red-600">{importError}</p>
-          {/if}
-
-          <div class="flex justify-end space-x-3">
-            <button
-              type="button"
-              on:click={cancelImport}
-              class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              Cancel
-            </button>
-
-            {#if showImportConfirmation}
-              <button
-                type="button"
-                on:click={confirmImport}
-                class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                Confirm Import
-              </button>
-            {:else}
-              <button
-                type="button"
-                on:click={processImportFile}
-                class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled={!importFile}
-              >
-                Next
-              </button>
-            {/if}
-          </div>
         </div>
       </div>
     </div>
