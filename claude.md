@@ -29,8 +29,7 @@ src/
 │   │   ├── PasswordList.svelte    # Alphabetically grouped list with favicons
 │   │   └── PasswordForm.svelte    # Add/edit form with generate, copy, show/hide
 │   ├── stores/
-│   │   ├── vault.ts        # Core state: masterKey, vault, CRUD ops, migrations, sync
-│   │   ├── auth.ts         # Authentication state
+│   │   ├── vault.ts        # Core state: masterKey, vault, CRUD ops, migrations, sync, auth
 │   │   └── github-auth.ts  # GitHub PAT + repo config (stored in localStorage)
 │   ├── types/
 │   │   └── password.ts     # PasswordEntry, PasswordVault, EncryptedVault, LegacyPasswordEntry
@@ -113,17 +112,14 @@ export const syncStatus = writable<{ syncing: boolean; lastSync: Date | null; er
 export async function addPassword(entry: Omit<PasswordEntry, 'id' | 'created' | 'modified'>): Promise<void>;
 export async function updatePassword(id: string, updates: Partial<PasswordEntry>): Promise<void>;
 export async function deletePassword(id: string): Promise<void>;
-export async function updateGlobalNotes(notes: string): Promise<void>;
 
 // Auth
 export async function unlockVault(password: string): Promise<boolean>;
 export function lockVault(): void;
-export function clearAllData(): void;
 
 // Sync
 export async function loadVaultFromGitHub(): Promise<void>;
-export function exportVault(): string | null;
-export function importVault(jsonString: string): boolean;
+export async function syncVaultToGitHub(): Promise<boolean>;
 ```
 
 ### Crypto Specifics (crypto.ts)
