@@ -137,7 +137,7 @@ export function importVault(jsonString: string): boolean;
 
 ### Vault Migrations
 
-Schema version tracked in `vaultVersion` field (current: `2`). `migrateVault()` in `vault.ts:35` runs on every `unlockVault()` call. Migrations are idempotent and backward-compatible.
+Schema version tracked in `vaultVersion` field (current: `2`). `migrateVault()` in `vault.ts:22` runs on every `unlockVault()` call. Migrations are idempotent and backward-compatible.
 
 **History**: v1 → v2: Removed `category` field from PasswordEntry
 

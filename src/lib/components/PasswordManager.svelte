@@ -493,7 +493,7 @@
 
       <!-- Password details/form -->
       <div
-        class="flex-1 bg-gradient-to-br from-slate-50 via-white to-slate-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-850 overflow-y-auto p-4 md:p-8 transition-all duration-300 animate-fade-in custom-scrollbar"
+        class="flex-1 bg-[#f8fafc] bg-[linear-gradient(rgb(148_163_184/0.15)_1px,transparent_1px),linear-gradient(90deg,rgb(148_163_184/0.15)_1px,transparent_1px)] [background-size:32px_32px] dark:bg-gray-900 dark:bg-[linear-gradient(rgb(148_163_184/0.06)_1px,transparent_1px),linear-gradient(90deg,rgb(148_163_184/0.06)_1px,transparent_1px)] overflow-y-auto p-4 md:p-8 transition-all duration-300 animate-fade-in custom-scrollbar"
       >
         {#if isAddingPassword}
           <div class="mb-4 flex justify-between items-center">
