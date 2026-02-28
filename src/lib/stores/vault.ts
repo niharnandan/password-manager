@@ -33,10 +33,8 @@ function migrateVault(vault: PasswordVault): PasswordVault {
 
   if (vaultVersion === 1) {
     const migratedEntries = vault.vault.map(
-      (entry: PasswordEntry & { category?: string }) => {
-        delete entry.category;
-        return entry as PasswordEntry;
-      },
+      ({ category: _, ...rest }: PasswordEntry & { category?: string }) =>
+        rest as PasswordEntry,
     );
 
     return {

@@ -300,6 +300,7 @@ async function uploadSecurityEvent(event: SecurityEvent): Promise<boolean> {
       metadata: { version: "1.0", totalEvents: 0 },
     };
 
+    let sha = "";
     try {
       const response = await fetch(
         `https://api.github.com/repos/${config.owner}/${config.repo}/contents/security-log.json`,
@@ -313,7 +314,8 @@ async function uploadSecurityEvent(event: SecurityEvent): Promise<boolean> {
 
       if (response.ok) {
         const data = await response.json();
-        const content = atob(data.content);
+        sha = data.sha;
+        const content = atob(data.content.replace(/\n/g, ""));
         currentLog = JSON.parse(content);
       }
     } catch {
@@ -331,26 +333,6 @@ async function uploadSecurityEvent(event: SecurityEvent): Promise<boolean> {
 
     const updatedContent = JSON.stringify(currentLog, null, 2);
     const encodedContent = btoa(updatedContent);
-
-    let sha = "";
-    try {
-      const response = await fetch(
-        `https://api.github.com/repos/${config.owner}/${config.repo}/contents/security-log.json`,
-        {
-          headers: {
-            Authorization: `token ${config.token}`,
-            Accept: "application/vnd.github.v3+json",
-          },
-        },
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        sha = data.sha;
-      }
-    } catch {
-      // File doesn't exist yet
-    }
 
     const uploadResponse = await fetch(
       `https://api.github.com/repos/${config.owner}/${config.repo}/contents/security-log.json`,

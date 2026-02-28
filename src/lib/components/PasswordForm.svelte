@@ -19,14 +19,12 @@
     const chars =
       "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+~`|}{[]:;?><,./-=";
     const passwordLength = 16;
-    let newPassword = "";
+    const randomBytes = new Uint8Array(passwordLength);
+    crypto.getRandomValues(randomBytes);
 
-    for (let i = 0; i < passwordLength; i++) {
-      const randomIndex = Math.floor(Math.random() * chars.length);
-      newPassword += chars.charAt(randomIndex);
-    }
-
-    formData.password = newPassword;
+    formData.password = Array.from(randomBytes, (b) =>
+      chars.charAt(b % chars.length),
+    ).join("");
   }
 
   function handleSubmit() {

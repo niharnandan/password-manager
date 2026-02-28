@@ -850,7 +850,7 @@
               ></div>
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                class="h-20 w-20 mb-6 text-blue-500/80 dark:text-blue-400/80 relative"
+                class="h-20 w-20 mb-6 text-blue-500 dark:text-blue-400 relative"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -864,11 +864,11 @@
               </svg>
             </div>
             <p
-              class="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2"
+              class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2"
             >
               Select a password to get started
             </p>
-            <p class="text-sm text-gray-600 dark:text-gray-400">
+            <p class="text-sm text-gray-700 dark:text-gray-300">
               Or create a new one using the button above
             </p>
           </div>

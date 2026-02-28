@@ -144,7 +144,6 @@
     errorMessage = "";
     isLoading = true;
     webAuthnAttempts++;
-    webAuthnRetryCount++;
 
     // Check if document is focused
     if (!document.hasFocus()) {
@@ -153,7 +152,7 @@
       return;
     }
 
-    // Check if we've exceeded retry limit
+    // Check if we've exceeded retry limit before incrementing
     if (webAuthnRetryCount >= MAX_RETRIES) {
       trackLoginAttempt("webauthn", "failed_threshold_exceeded");
       errorMessage =
@@ -164,6 +163,8 @@
       }, 2000); // Give user time to read the message
       return;
     }
+
+    webAuthnRetryCount++;
 
     try {
       const result = await authenticateWithWebAuthn();
