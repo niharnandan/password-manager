@@ -51,7 +51,6 @@ interface UAClientHints {
 }
 
 interface NetworkInfo {
-  ipAddress: string;
   userAgentClientHints?: UAClientHints | null;
   effectiveType?: string;
   downlink?: number;
@@ -81,33 +80,6 @@ interface SecurityInfo {
   storageWiped: boolean;
   webAuthnCredentialsCleared: boolean;
   sessionTerminated: boolean;
-}
-
-async function getExternalIP(): Promise<string> {
-  try {
-    const services = [
-      "https://api.ipify.org?format=json",
-      "https://ipapi.co/json/",
-      "https://httpbin.org/ip",
-    ];
-
-    for (const service of services) {
-      try {
-        const response = await fetch(service);
-        const data = await response.json();
-        if (data.ip) return data.ip;
-        if (data.origin) return data.origin;
-        if (data.query) return data.query;
-      } catch {
-        continue;
-      }
-    }
-
-    return "Unknown";
-  } catch (error) {
-    console.warn("Failed to get external IP:", error);
-    return "Unknown";
-  }
 }
 
 function getBrowserInfo(): { name: string; version: string; engine: string } {
@@ -208,7 +180,6 @@ async function collectDeviceInfo(): Promise<{
   const browserInfo = getBrowserInfo();
   const networkInfo = getNetworkInfo();
   const clientHints = await getUserAgentClientHints();
-  const externalIP = await getExternalIP();
 
   const device: DeviceInfo = {
     userAgent: navigator.userAgent,
@@ -241,7 +212,6 @@ async function collectDeviceInfo(): Promise<{
   };
 
   const network: NetworkInfo = {
-    ipAddress: externalIP,
     userAgentClientHints: clientHints,
     ...networkInfo,
   };
