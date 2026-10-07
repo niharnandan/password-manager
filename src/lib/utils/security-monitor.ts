@@ -1,7 +1,11 @@
 import { browser } from "$app/environment";
-import { getGitHubConfig } from "$lib/stores/github-auth";
+import { appendSecurityEvents } from "$lib/utils/github-sync";
+import type { GitHubConfig } from "$lib/utils/github-sync";
 
-interface SecurityEvent {
+const PENDING_EVENTS_KEY = "pending_security_events";
+const MAX_PENDING_EVENTS = 20;
+
+export interface SecurityEvent {
   timestamp: string;
   eventType: "FAILED_LOGIN_THRESHOLD_EXCEEDED";
   attemptsCount: number;
@@ -248,125 +252,33 @@ function getSessionInfo(
   };
 }
 
-async function uploadSecurityEvent(event: SecurityEvent): Promise<boolean> {
-  try {
-    const config = getGitHubConfig();
-    if (!config) {
-      console.warn("No GitHub config available for security logging");
-      return false;
-    }
-
-    interface SecurityLog {
-      securityEvents: SecurityEvent[];
-      metadata: {
-        version: string;
-        totalEvents: number;
-        lastUpdated?: string;
-      };
-    }
-
-    let currentLog: SecurityLog = {
-      securityEvents: [],
-      metadata: { version: "1.0", totalEvents: 0 },
-    };
-
-    let sha = "";
-    try {
-      const response = await fetch(
-        `https://api.github.com/repos/${config.owner}/${config.repo}/contents/security-log.json`,
-        {
-          headers: {
-            Authorization: `token ${config.token}`,
-            Accept: "application/vnd.github.v3+json",
-          },
-        },
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        sha = data.sha;
-        const content = atob(data.content.replace(/\n/g, ""));
-        currentLog = JSON.parse(content);
-      }
-    } catch {
-      console.log("Creating new security log file");
-    }
-
-    currentLog.securityEvents.push(event);
-    currentLog.metadata.lastUpdated = event.timestamp;
-    currentLog.metadata.totalEvents = currentLog.securityEvents.length;
-
-    if (currentLog.securityEvents.length > 100) {
-      currentLog.securityEvents = currentLog.securityEvents.slice(-100);
-      currentLog.metadata.totalEvents = 100;
-    }
-
-    const updatedContent = JSON.stringify(currentLog, null, 2);
-    const encodedContent = btoa(updatedContent);
-
-    const uploadResponse = await fetch(
-      `https://api.github.com/repos/${config.owner}/${config.repo}/contents/security-log.json`,
-      {
-        method: "PUT",
-        headers: {
-          Authorization: `token ${config.token}`,
-          Accept: "application/vnd.github.v3+json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: `Security Alert: Failed login threshold exceeded - ${new Date().toISOString()}`,
-          content: encodedContent,
-          ...(sha && { sha }),
-        }),
-      },
-    );
-
-    if (uploadResponse.ok) {
-      console.log("Security event logged to GitHub successfully");
-      return true;
-    } else {
-      const error = await uploadResponse.text();
-      console.error("Failed to upload security event:", error);
-      return false;
-    }
-  } catch (error) {
-    console.error("Error uploading security event:", error);
-    return false;
-  }
-}
-
-export async function logSecurityEvent(
+/** Collects details about the device that exceeded the failed-login limit. */
+export async function buildSecurityEvent(
   attemptsCount: number,
   previousAttempts: Array<{
     timestamp: string;
     method: "password" | "webauthn";
     result: string;
   }>,
-): Promise<void> {
-  if (!browser) {
-    console.warn("Security monitoring can only be performed in the browser");
-    return;
-  }
+): Promise<SecurityEvent | null> {
+  if (!browser) return null;
 
   try {
-    console.log("Collecting security information...");
-
     const {
       device,
       browser: browserData,
       network,
       location,
     } = await collectDeviceInfo();
-    const session = getSessionInfo(previousAttempts);
 
-    const securityEvent: SecurityEvent = {
+    return {
       timestamp: new Date().toISOString(),
       eventType: "FAILED_LOGIN_THRESHOLD_EXCEEDED",
       attemptsCount,
       device,
       browser: browserData,
       network,
-      session,
+      session: getSessionInfo(previousAttempts),
       location,
       security: {
         storageWiped: true,
@@ -374,12 +286,56 @@ export async function logSecurityEvent(
         sessionTerminated: true,
       },
     };
-
-    console.log("Uploading security event to GitHub...");
-    await uploadSecurityEvent(securityEvent);
   } catch (error) {
-    console.error("Failed to log security event:", error);
+    console.error("Failed to collect security event:", error);
+    return null;
   }
+}
+
+function readPendingEvents(): SecurityEvent[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(PENDING_EVENTS_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Keeps the event on this device until the next successful unlock. Uploading
+ * immediately would need a GitHub credential available to whoever is failing
+ * to log in, i.e. a credential anyone could extract.
+ */
+export function queueSecurityEvent(event: SecurityEvent): void {
+  if (!browser) return;
+  try {
+    const events = [...readPendingEvents(), event].slice(-MAX_PENDING_EVENTS);
+    localStorage.setItem(PENDING_EVENTS_KEY, JSON.stringify(events));
+  } catch (error) {
+    console.error("Failed to queue security event:", error);
+  }
+}
+
+export function getPendingSecurityEventCount(): number {
+  if (!browser) return 0;
+  return readPendingEvents().length;
+}
+
+/** Uploads queued events to security-log.json; returns how many were sent. */
+export async function flushPendingSecurityEvents(
+  config: GitHubConfig,
+): Promise<number> {
+  if (!browser) return 0;
+  const events = readPendingEvents();
+  if (events.length === 0) return 0;
+
+  const result = await appendSecurityEvents(config, events);
+  if (!result.success) {
+    console.error("Failed to upload security events:", result.error);
+    return 0;
+  }
+  localStorage.removeItem(PENDING_EVENTS_KEY);
+  return events.length;
 }
 
 export function trackLoginAttempt(

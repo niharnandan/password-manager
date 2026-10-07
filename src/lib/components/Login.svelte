@@ -1,35 +1,55 @@
+<script lang="ts" module>
+  // Prompt for biometrics automatically only on the first login screen of a
+  // page load. After a logout or auto-lock nobody may be at the device, and
+  // an unanswered prompt would count as a failed attempt.
+  let loginScreenShownBefore = false;
+</script>
+
 <script lang="ts">
   import { onMount } from "svelte";
   import {
+    enableBiometricUnlock,
+    lockVault,
+    notices,
     unlockVault,
-    masterKey,
-    encryptedVault,
-    isAuthenticated,
+    unlockWithBiometrics,
   } from "$lib/stores/vault";
   import {
-    isWebAuthnSupported,
-    hasWebAuthnCredential,
-    registerWebAuthnCredential,
-    authenticateWithWebAuthn,
-    clearWebAuthnCredential,
-  } from "$lib/utils/webauthn";
-  import { getCachedVault, clearCachedVault } from "$lib/utils/local-storage";
+    getCachedVault,
+    hasStoredGitHubToken,
+  } from "$lib/utils/local-storage";
   import {
-    logSecurityEvent,
-    trackLoginAttempt,
+    buildSecurityEvent,
     getTrackedAttempts,
+    queueSecurityEvent,
+    trackLoginAttempt,
   } from "$lib/utils/security-monitor";
-  import { loadGitHubAuth } from "$lib/stores/github-auth";
-  import { get } from "svelte/store";
+  import {
+    discardLegacyWebAuthnData,
+    getPrfSupport,
+    hasWebAuthnCredential,
+    isWebAuthnSupported,
+  } from "$lib/utils/webauthn";
+
+  // Older versions stored the biometric key in a form readable without
+  // biometrics; remove it before deciding which login flow to show.
+  const legacyBiometricsDiscarded = discardLegacyWebAuthnData();
+  let hasStoredToken = hasStoredGitHubToken();
+  let hasLocalVault = getCachedVault() !== null;
 
   let password = "";
+  let githubToken = "";
+  let showTokenField = !hasStoredToken;
   let errorMessage = "";
+  let infoMessage = legacyBiometricsDiscarded
+    ? "Biometric unlock was reset because the previous version did not protect your key properly. Unlock with your master password to set it up again."
+    : "";
   let isLoading = false;
   let enableWebAuthn = false;
+  let prfSupported: boolean | null = null;
   let hasWebAuthn = isWebAuthnSupported() && hasWebAuthnCredential();
   let webAuthnAttempts = 0;
   let showPasswordForm = false;
-  let autoWebAuthnTried = false;
   let webAuthnRetryCount =
     typeof localStorage !== "undefined"
       ? parseInt(localStorage.getItem("webauthn_retry_count") || "0", 10)
@@ -46,102 +66,102 @@
   }
 
   onMount(() => {
-    if (hasWebAuthn && !autoWebAuthnTried && document.hasFocus()) {
-      autoWebAuthnTried = true;
+    void getPrfSupport().then((supported) => (prfSupported = supported));
+
+    const firstLoginScreen = !loginScreenShownBefore;
+    loginScreenShownBefore = true;
+
+    if (hasWebAuthn && firstLoginScreen && document.hasFocus()) {
       setTimeout(tryWebAuthnLogin, 50);
     } else if (!hasWebAuthn) {
       showPasswordForm = true;
     }
   });
 
+  function resetRetryCounts() {
+    passwordRetryCount = 0;
+    webAuthnRetryCount = 0;
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem("password_retry_count");
+      localStorage.removeItem("webauthn_retry_count");
+    }
+  }
+
   async function handleSubmit() {
     errorMessage = "";
+    infoMessage = "";
     isLoading = true;
 
     try {
-      // Always unlock vault from GitHub/localStorage
-      const success = await unlockVault(password);
-      if (!success) {
-        passwordRetryCount++;
+      const result = await unlockVault(password, {
+        token: showTokenField ? githubToken : undefined,
+      });
 
-        // Track failed password attempt
-        trackLoginAttempt("password", "failed");
-
-        // Check if we've exceeded retry limit for password attempts
-        if (passwordRetryCount >= MAX_RETRIES) {
-          trackLoginAttempt("password", "failed_threshold_exceeded");
-          errorMessage =
-            "Too many failed password attempts. All data will be wiped for security.";
-          isLoading = false;
-          setTimeout(() => {
-            wipeAllStorage();
-          }, 2000); // Give user time to read the message
-          return;
-        }
-
-        if (passwordRetryCount >= MAX_RETRIES - 1) {
-          errorMessage = `Invalid password or connection error (${passwordRetryCount}/${MAX_RETRIES} attempts) - WARNING: One more failed attempt will wipe all data!`;
-        } else {
-          errorMessage = `Invalid password or connection error (${passwordRetryCount}/${MAX_RETRIES} attempts)`;
-        }
-      } else {
-        // Track successful password login
+      if (result.ok) {
         trackLoginAttempt("password", "success");
-
-        // Reset retry counts on successful login
-        passwordRetryCount = 0;
-        webAuthnRetryCount = 0;
-        // Clear persisted retry counts
-        if (typeof localStorage !== "undefined") {
-          localStorage.removeItem("password_retry_count");
-          localStorage.removeItem("webauthn_retry_count");
-        }
+        resetRetryCounts();
+        password = "";
+        githubToken = "";
 
         if (enableWebAuthn && isWebAuthnSupported()) {
-          // Register WebAuthn credential after successful login
-          const currentMasterKey = get(masterKey);
-          if (currentMasterKey) {
-            const result = await registerWebAuthnCredential(
-              "user",
-              currentMasterKey,
-            );
-            if (!result.success) {
-              console.warn("WebAuthn registration failed:", result.error);
-            }
+          const registration = await enableBiometricUnlock();
+          if (!registration.success) {
+            console.warn("WebAuthn registration failed:", registration.error);
+            notices.update((list) => [
+              ...list,
+              `Biometric unlock was not turned on: ${registration.error}`,
+            ]);
           }
         }
-      }
-    } catch (error) {
-      passwordRetryCount++;
-
-      // Track failed password attempt (error case)
-      trackLoginAttempt("password", "error");
-
-      // Check if we've exceeded retry limit for password attempts
-      if (passwordRetryCount >= MAX_RETRIES) {
-        trackLoginAttempt("password", "failed_threshold_exceeded");
-        errorMessage =
-          "Too many failed attempts. All data will be wiped for security.";
-        isLoading = false;
-        setTimeout(() => {
-          wipeAllStorage();
-        }, 2000);
         return;
       }
 
-      if (passwordRetryCount >= MAX_RETRIES - 1) {
-        errorMessage = `An error occurred (${passwordRetryCount}/${MAX_RETRIES} attempts) - WARNING: One more failed attempt will wipe all data!`;
-      } else {
-        errorMessage = `An error occurred (${passwordRetryCount}/${MAX_RETRIES} attempts)`;
+      if (result.reason !== "wrong-password") {
+        // Missing token, missing vault, network trouble: not a guess.
+        trackLoginAttempt("password", result.reason);
+        errorMessage = result.message;
+        if (result.reason === "needs-token" || result.reason === "token-rejected")
+          showTokenField = true;
+        return;
       }
+
+      passwordRetryCount++;
+      trackLoginAttempt("password", "failed");
+
+      if (passwordRetryCount >= MAX_RETRIES) {
+        trackLoginAttempt("password", "failed_threshold_exceeded");
+        errorMessage =
+          "Too many failed password attempts. All data will be wiped for security.";
+        isLoading = false;
+        setTimeout(() => {
+          wipeAllStorage();
+        }, 2000); // Give user time to read the message
+        return;
+      }
+
+      const tokenHint =
+        hasStoredToken && !showTokenField
+          ? " If you changed it on another device, also enter your GitHub token."
+          : "";
+      if (passwordRetryCount >= MAX_RETRIES - 1) {
+        errorMessage = `Invalid master password (${passwordRetryCount}/${MAX_RETRIES} attempts) - WARNING: One more failed attempt will wipe all data!${tokenHint}`;
+      } else {
+        errorMessage = `Invalid master password (${passwordRetryCount}/${MAX_RETRIES} attempts).${tokenHint}`;
+      }
+    } catch (error) {
       console.error(error);
+      errorMessage = "An unexpected error occurred. Please try again.";
     } finally {
       isLoading = false;
+      // An attempt can drop a rejected token or replace the cached vault.
+      hasStoredToken = hasStoredGitHubToken();
+      hasLocalVault = getCachedVault() !== null;
     }
   }
 
   async function tryWebAuthnLogin() {
     errorMessage = "";
+    infoMessage = "";
     isLoading = true;
     webAuthnAttempts++;
 
@@ -167,68 +187,30 @@
     webAuthnRetryCount++;
 
     try {
-      const result = await authenticateWithWebAuthn();
-      if (result.success && result.masterKey) {
-        // Try to load cached vault first
-        const cachedVault = getCachedVault();
-        if (cachedVault) {
-          // Track successful WebAuthn login
-          trackLoginAttempt("webauthn", "success");
+      const result = await unlockWithBiometrics();
+      if (result.ok) {
+        trackLoginAttempt("webauthn", "success");
+        resetRetryCounts();
+        return;
+      }
 
-          // Set the master key and vault
-          masterKey.set(result.masterKey);
-          encryptedVault.set(cachedVault);
-          isAuthenticated.set(true);
+      if (result.reason === "needs-password") {
+        // Not a failed authentication: the record can't open the vault.
+        trackLoginAttempt("webauthn", "needs_password");
+        webAuthnRetryCount = Math.max(0, webAuthnRetryCount - 1);
+        hasWebAuthn = isWebAuthnSupported() && hasWebAuthnCredential();
+        showPasswordForm = true;
+        errorMessage = result.message;
+        return;
+      }
 
-          // Reset retry counts on success
-          webAuthnRetryCount = 0;
-          passwordRetryCount = 0;
-          // Clear persisted retry counts
-          if (typeof localStorage !== "undefined") {
-            localStorage.removeItem("webauthn_retry_count");
-            localStorage.removeItem("password_retry_count");
-          }
-
-          // Initialize GitHub auth for sync functionality
-          // The GitHub token is hardcoded in the config
-          loadGitHubAuth();
-
-          // Try to sync in the background
-          try {
-            await unlockVault(""); // This will attempt GitHub sync if configured
-          } catch (e) {
-            // Ignore sync errors when using cached vault
-            console.warn("Background sync failed:", e);
-          }
-        } else {
-          trackLoginAttempt("webauthn", "failed_no_cached_vault");
-          errorMessage =
-            "No cached vault found. Please login with password first to enable Face ID.";
-          showPasswordForm = true;
-          masterKey.set(null);
-        }
+      trackLoginAttempt("webauthn", "failed");
+      if (result.message.includes("Document not focused")) {
+        errorMessage = "Document not focused. Please click and try again.";
+      } else if (webAuthnRetryCount >= MAX_RETRIES - 1) {
+        errorMessage = `${result.message || "Face ID failed"} (${webAuthnRetryCount}/${MAX_RETRIES} attempts) - WARNING: One more failed attempt will wipe all data!`;
       } else {
-        // Track failed WebAuthn attempt
-        trackLoginAttempt("webauthn", "failed");
-
-        // Handle specific error cases
-        if (result.error?.includes("Document not focused")) {
-          errorMessage = "Document not focused. Please click and try again.";
-        } else if (result.error?.includes("decrypt")) {
-          errorMessage =
-            "Face ID data corrupted. Please login with password to re-register.";
-          showPasswordForm = true;
-        } else if (result.error?.includes("Legacy")) {
-          errorMessage =
-            "Face ID needs to be re-registered. Please login with password.";
-          showPasswordForm = true;
-        } else {
-          if (webAuthnRetryCount >= MAX_RETRIES - 1) {
-            errorMessage = `${result.error || "Face ID failed"} (${webAuthnRetryCount}/${MAX_RETRIES} attempts) - WARNING: One more failed attempt will wipe all data!`;
-          } else {
-            errorMessage = `${result.error || "Face ID failed"} (${webAuthnRetryCount}/${MAX_RETRIES} attempts). Try again or use password.`;
-          }
-        }
+        errorMessage = `${result.message || "Face ID failed"} (${webAuthnRetryCount}/${MAX_RETRIES} attempts). Try again or use password.`;
       }
     } catch (error) {
       console.error("WebAuthn authentication error:", error);
@@ -248,37 +230,25 @@
 
   async function wipeAllStorage() {
     try {
-      // Log security event before wiping storage
       const totalAttempts = webAuthnRetryCount + passwordRetryCount;
-      const trackedAttempts = getTrackedAttempts();
+      const event = await buildSecurityEvent(
+        totalAttempts,
+        getTrackedAttempts(),
+      );
 
-      console.log("Logging security event for suspicious activity...");
-      await logSecurityEvent(totalAttempts, trackedAttempts);
-
-      // Clear all localStorage
+      // Wipes the cached vault, encrypted token, and biometric record.
       localStorage.clear();
-
-      // Clear all sessionStorage
       sessionStorage.clear();
 
-      // Clear WebAuthn credentials
-      clearWebAuthnCredential();
+      // No credential is available before login, so the event waits on this
+      // device and is uploaded after the next successful unlock.
+      if (event) queueSecurityEvent(event);
 
-      // Clear cached vault
-      clearCachedVault();
-
-      // Reset all state
-      masterKey.set(null);
-      encryptedVault.set(null);
-      isAuthenticated.set(false);
-
-      // Reset retry counts
+      lockVault();
       webAuthnRetryCount = 0;
       passwordRetryCount = 0;
 
       console.log("All storage wiped due to too many failed login attempts");
-
-      // Reload the page to reset everything
       window.location.reload();
     } catch (error) {
       console.error("Error wiping storage:", error);
@@ -528,8 +498,55 @@
             </p>
           </div>
 
+          <!-- GitHub sync token (never bundled into the site) -->
+          {#if showTokenField}
+            <div class="space-y-2">
+              <label
+                for="github-token"
+                class="block text-sm font-semibold text-gray-700 dark:text-gray-300"
+              >
+                GitHub access token
+                {#if hasStoredToken}
+                  <span class="font-normal text-gray-500 dark:text-gray-400"
+                    >(replaces the saved one)</span
+                  >
+                {:else if hasLocalVault}
+                  <span class="font-normal text-gray-500 dark:text-gray-400"
+                    >(needed for sync)</span
+                  >
+                {/if}
+              </label>
+              <input
+                id="github-token"
+                type="password"
+                bind:value={githubToken}
+                autocomplete="off"
+                autocapitalize="off"
+                spellcheck="false"
+                data-1p-ignore
+                data-lpignore="true"
+                required={!hasStoredToken && !hasLocalVault}
+                class="w-full px-4 py-3.5 text-gray-900 dark:text-white bg-white dark:bg-gray-900 border-2 border-gray-300 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                placeholder="github_pat_..."
+              />
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                A fine-grained token with read and write access to the vault
+                repository's contents. Needed once per device. It is stored
+                only on this device, encrypted with your master password.
+              </p>
+            </div>
+          {:else}
+            <button
+              type="button"
+              on:click={() => (showTokenField = true)}
+              class="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors duration-200"
+            >
+              Use a different GitHub token
+            </button>
+          {/if}
+
           <!-- WebAuthn Setup Option -->
-          {#if isWebAuthnSupported() && !hasWebAuthnCredential()}
+          {#if isWebAuthnSupported() && !hasWebAuthn && prfSupported !== false}
             <div
               class="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-xl p-4"
             >
@@ -572,6 +589,17 @@
                   </div>
                 </div>
               </div>
+            </div>
+          {/if}
+
+          {#if infoMessage}
+            <div
+              class="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-xl p-4"
+              role="status"
+            >
+              <p class="text-sm text-blue-800 dark:text-blue-200">
+                {infoMessage}
+              </p>
             </div>
           {/if}
 

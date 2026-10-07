@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import {
     vault,
     lockVault,
@@ -6,12 +7,69 @@
     updatePassword,
     deletePassword,
     syncStatus,
-    loadVaultFromGitHub,
+    refreshFromGitHub,
+    notices,
   } from "$lib/stores/vault";
   import { isGitHubAuthenticated } from "$lib/stores/github-auth";
+  import { getFaviconUrl, hasFavicon } from "$lib/utils/favicon";
+  import { toSafeExternalUrl } from "$lib/utils/url";
   import PasswordList from "./PasswordList.svelte";
   import PasswordForm from "./PasswordForm.svelte";
-  import { getFaviconUrl, hasFavicon } from "$lib/utils/favicon";
+  import ChangeMasterPassword from "./ChangeMasterPassword.svelte";
+
+  // Lock after this long without keyboard, pointer, or scroll activity.
+  const AUTO_LOCK_MS = 15 * 60 * 1000;
+  const ACTIVITY_EVENTS = [
+    "pointerdown",
+    "pointermove",
+    "keydown",
+    "wheel",
+    "touchstart",
+    "scroll",
+  ] as const;
+
+  let lastActivity = Date.now();
+  let showChangeMasterPassword = false;
+
+  function markActivity() {
+    lastActivity = Date.now();
+  }
+
+  function lockIfIdle(): boolean {
+    if (Date.now() - lastActivity < AUTO_LOCK_MS) return false;
+    lockVault();
+    return true;
+  }
+
+  function handleVisibilityChange() {
+    // Check before counting the return to the tab as activity.
+    if (document.visibilityState === "visible" && !lockIfIdle()) {
+      markActivity();
+    }
+  }
+
+  onMount(() => {
+    for (const type of ACTIVITY_EVENTS) {
+      window.addEventListener(type, markActivity, {
+        capture: true,
+        passive: true,
+      });
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    const timer = setInterval(lockIfIdle, 15_000);
+
+    return () => {
+      for (const type of ACTIVITY_EVENTS) {
+        window.removeEventListener(type, markActivity, { capture: true });
+      }
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      clearInterval(timer);
+    };
+  });
+
+  function dismissNotice(index: number) {
+    notices.update((list) => list.filter((_, i) => i !== index));
+  }
 
   let selectedPasswordId: string | null = null;
   let isAddingPassword = false;
@@ -27,7 +85,12 @@
   }
 
   async function copyUsername(username: string, entryId: string) {
-    await navigator.clipboard.writeText(username);
+    try {
+      await navigator.clipboard.writeText(username);
+    } catch (error) {
+      console.error("Copy failed:", error);
+      return;
+    }
     copiedUsernameId = entryId;
     setTimeout(() => {
       if (copiedUsernameId === entryId) {
@@ -37,7 +100,12 @@
   }
 
   async function copyPasswordField(password: string, entryId: string) {
-    await navigator.clipboard.writeText(password);
+    try {
+      await navigator.clipboard.writeText(password);
+    } catch (error) {
+      console.error("Copy failed:", error);
+      return;
+    }
     copiedPasswordId = entryId;
     setTimeout(() => {
       if (copiedPasswordId === entryId) {
@@ -50,8 +118,8 @@
     if (!$isGitHubAuthenticated || $syncStatus.syncing) return;
 
     try {
-      // Fetch the latest from GitHub
-      await loadVaultFromGitHub();
+      // Push pending local changes, or fetch the latest from GitHub
+      await refreshFromGitHub();
     } catch (error) {
       console.error("Manual sync failed:", error);
     }
@@ -317,6 +385,29 @@
           {/if}
 
           <button
+            on:click={() => (showChangeMasterPassword = true)}
+            class="hidden sm:inline-flex items-center px-3 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-lg text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 btn-hover-elevate"
+            title="Change master password"
+            aria-label="Change master password"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+              />
+            </svg>
+            <span class="hidden lg:inline ml-1.5">Master password</span>
+          </button>
+
+          <button
             on:click={handleLogout}
             class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-lg text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 btn-hover-elevate"
           >
@@ -374,6 +465,7 @@
             Add New
           </button>
 
+          <div class="flex items-center gap-2">
           <!-- Mobile Sync Status -->
           {#if $isGitHubAuthenticated}
             <div class="flex items-center">
@@ -473,10 +565,66 @@
               {/if}
             </div>
           {/if}
+            <button
+              on:click={() => (showChangeMasterPassword = true)}
+              class="inline-flex items-center px-3 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-lg text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+              title="Change master password"
+              aria-label="Change master password"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>
   </nav>
+
+  {#if $notices.length > 0}
+    <div class="px-3 pt-3 space-y-2">
+      {#each $notices as notice, index (index)}
+        <div
+          class="flex items-start justify-between gap-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-900 dark:text-amber-100"
+          role="status"
+        >
+          <p>{notice}</p>
+          <button
+            type="button"
+            on:click={() => dismissNotice(index)}
+            class="flex-shrink-0 text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100"
+            aria-label="Dismiss"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
+      {/each}
+    </div>
+  {/if}
 
   <div class="flex-1 flex flex-row overflow-hidden relative min-h-0">
       <div
@@ -532,6 +680,7 @@
           />
         {:else if selectedPasswordId && $vault?.vault}
           {#each $vault.vault.filter((entry) => entry.id === selectedPasswordId) as entry (entry.id)}
+            {@const safeUrl = toSafeExternalUrl(entry.url)}
             <div class="mb-4 flex justify-between items-center">
               <div class="flex items-center gap-3 text-glisten">
                 {#if hasFavicon(entry.title)}
@@ -807,14 +956,23 @@
                     Website
                   </h3>
                   <div class="mt-1 flex items-center">
-                    <a
-                      href={entry.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 break-all transition-colors duration-200 font-medium"
-                    >
-                      {entry.url}
-                    </a>
+                    {#if safeUrl}
+                      <a
+                        href={safeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 break-all transition-colors duration-200 font-medium"
+                      >
+                        {entry.url}
+                      </a>
+                    {:else}
+                      <!-- Not an http(s) URL: show as text, never as a link -->
+                      <p
+                        class="text-sm text-gray-900 dark:text-gray-100 break-all font-medium"
+                      >
+                        {entry.url}
+                      </p>
+                    {/if}
                   </div>
                 </div>
 
@@ -926,5 +1084,9 @@
         </div>
       </div>
     </div>
+  {/if}
+
+  {#if showChangeMasterPassword}
+    <ChangeMasterPassword onClose={() => (showChangeMasterPassword = false)} />
   {/if}
 </div>

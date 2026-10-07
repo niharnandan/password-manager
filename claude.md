@@ -24,24 +24,26 @@ Client-side SPA password manager with zero backend. All crypto runs in the brows
 src/
 ├── lib/
 │   ├── components/       # Svelte UI components
-│   │   ├── Login.svelte           # Login flow: password + WebAuthn
-│   │   ├── PasswordManager.svelte # Main UI: navbar, 2-column layout, detail view, modals
+│   │   ├── Login.svelte           # Login flow: password (+ GitHub token on new devices) + WebAuthn
+│   │   ├── PasswordManager.svelte # Main UI: navbar, 2-column layout, detail view, notices, auto-lock
+│   │   ├── ChangeMasterPassword.svelte # Modal: re-encrypt the vault under a new master password
 │   │   ├── PasswordList.svelte    # Alphabetically grouped list with favicons
 │   │   └── PasswordForm.svelte    # Add/edit form with generate, copy, show/hide
 │   ├── stores/
-│   │   ├── vault.ts        # Core state: masterKey, vault, CRUD ops, migrations, sync, auth
-│   │   └── github-auth.ts  # GitHub PAT + repo config (stored in localStorage)
+│   │   ├── vault.ts        # Core state: masterKey, vault, unlock, KDF upgrade, CRUD, sync, password change
+│   │   └── github-auth.ts  # Vault repo constants + in-memory token session; token wrap/unwrap
 │   ├── types/
-│   │   └── password.ts     # PasswordEntry, PasswordVault, EncryptedVault, LegacyPasswordEntry
+│   │   └── password.ts     # PasswordEntry, PasswordVault, EncryptedVault, KdfParams
 │   └── utils/
-│       ├── crypto.ts           # TweetNaCl secretbox: encrypt, decrypt, deriveKey, generateSalt
-│       ├── webauthn.ts         # WebAuthn registration + authentication
-│       ├── security-monitor.ts # Failed login tracking, device fingerprinting, GitHub logging
-│       ├── github-sync.ts      # GitHub API: upload/download vault.json + security-log.json
-│       ├── local-storage.ts    # Local vault caching (cacheVault, getCachedVault, clearCachedVault)
+│       ├── crypto.ts           # secretbox, PBKDF2/HKDF (WebCrypto), legacy KDF, envelope validation
+│       ├── webauthn.ts         # WebAuthn registration + authentication (PRF extension)
+│       ├── security-monitor.ts # Failed login tracking, device fingerprinting, queued GitHub logging
+│       ├── github-sync.ts      # GitHub API: vault.json + security-log.json, private-repo check
+│       ├── local-storage.ts    # Vault cache, pending-sync flag, encrypted GitHub token
+│       ├── url.ts              # toSafeExternalUrl: only http(s) links are rendered
 │       └── favicon.ts          # Title-to-domain mapping for password entry logos
 ├── routes/
-│   ├── +layout.svelte    # Root layout
+│   ├── +layout.svelte    # Root layout (refuses to render inside a frame)
 │   └── +page.svelte      # Main page (switches between Login and PasswordManager)
 ├── app.css               # Global styles: font, animations, scrollbar, shadows, button effects
 └── app.d.ts              # Global type definitions
@@ -52,9 +54,9 @@ src/
 ```
 User Input (Password/WebAuthn)
      ↓
-Key Derivation: SHA-512 hash (password + salt) → truncated to 32 bytes
+Key Derivation: PBKDF2-HMAC-SHA256, 600,000 iterations (WebCrypto) → 32 bytes
      ↓
-Master Key (in memory only, never persisted)
+Master Key (in memory only, never persisted; zeroed on lock)
      ↓
 Decrypt Vault: XSalsa20-Poly1305 (TweetNaCl secretbox)
      ↓
@@ -65,7 +67,9 @@ UI Components
 On Change: Re-encrypt → auto-sync to GitHub API + localStorage
 ```
 
-WebAuthn stores an **encrypted copy** of the master key in localStorage. The encryption key is derived from the WebAuthn credential's public key + a random salt. On biometric auth, the master key is decrypted from this stored copy.
+WebAuthn stores an **encrypted copy** of the master key in localStorage. The wrapping key is derived (HKDF) from the authenticator's **PRF extension** output, which the authenticator only releases after user verification. Nothing in localStorage is enough to recover the master key without the authenticator.
+
+The GitHub token is **never bundled** (no `VITE_*` secrets: Vite inlines them into public JS). It is entered on the login screen once per device and stored in localStorage only encrypted under the vault key (`github_token_encrypted`, same salt + KDF as the vault, so unlocking costs one PBKDF2 run).
 
 ### Type Definitions
 
@@ -96,6 +100,7 @@ interface EncryptedVault {
   salt: string; // Base64 encoded, 24 bytes
   nonce: string; // Base64 encoded, 24 bytes
   ciphertext: string; // Base64 encoded
+  kdf?: { algorithm: "PBKDF2-SHA256"; iterations: number }; // absent = legacy SHA-512 vault
 }
 ```
 
@@ -108,24 +113,30 @@ export const encryptedVault = writable<EncryptedVault | null>(null);
 export const vault = derived(...);  // Decrypts encryptedVault using masterKey
 export const syncStatus = writable<{ syncing: boolean; lastSync: Date | null; error: string | null }>();
 
+export const notices = writable<string[]>([]); // banners shown after unlock (sync problems, lockouts)
+
 // CRUD - all auto-sync to GitHub/localStorage after mutation
 export async function addPassword(entry: Omit<PasswordEntry, 'id' | 'created' | 'modified'>): Promise<void>;
 export async function updatePassword(id: string, updates: Partial<PasswordEntry>): Promise<void>;
 export async function deletePassword(id: string): Promise<void>;
 
-// Auth
-export async function unlockVault(password: string): Promise<boolean>;
+// Auth. Only reason "wrong-password" may count toward the wipe threshold.
+export async function unlockVault(password: string, options?: { token?: string }): Promise<UnlockResult>;
+export async function unlockWithBiometrics(): Promise<UnlockResult>;
+export async function enableBiometricUnlock(): Promise<{ success: boolean; error?: string }>;
+export async function changeMasterPassword(current: string, next: string): Promise<{ success: boolean; error?: string; warning?: string }>;
 export function lockVault(): void;
 
 // Sync
-export async function loadVaultFromGitHub(): Promise<void>;
-export async function syncVaultToGitHub(): Promise<boolean>;
+export async function refreshFromGitHub(): Promise<void>; // manual sync button
+export function syncVaultToGitHub(): Promise<boolean>; // serialized; concurrent calls coalesce
 ```
 
 ### Crypto Specifics (crypto.ts)
 
 - Encryption: `nacl.secretbox` (XSalsa20-Poly1305)
-- Key derivation: `nacl.hash` (SHA-512) of `password + salt`, truncated to 32 bytes
+- Key derivation: PBKDF2-HMAC-SHA256, 600,000 iterations (`CURRENT_KDF`), password NFC-normalized. Parameters are stored in `EncryptedVault.kdf` and validated (100k–10M iterations) before use.
+- Legacy key derivation (`deriveLegacyKey`): one SHA-512 pass over `password + salt`. Only used to open old vaults, which are re-encrypted with PBKDF2 and a fresh salt on the next password unlock.
 - Salt: 24 bytes random (`nacl.randomBytes`)
 - Nonce: 24 bytes random per encryption
 - All values stored as Base64 via `tweetnacl-util`
@@ -133,7 +144,9 @@ export async function syncVaultToGitHub(): Promise<boolean>;
 
 ### Vault Migrations
 
-Schema version tracked in `vaultVersion` field (current: `2`). `migrateVault()` in `vault.ts:22` runs on every `unlockVault()` call. Migrations are idempotent and backward-compatible.
+Schema version tracked in `vaultVersion` field (current: `2`). `migrateVault()` in `vault.ts:55` runs on every unlock. Migrations are idempotent and backward-compatible.
+
+Key-derivation upgrades are separate from schema migrations: they live in the `EncryptedVault.kdf` envelope field, and `unlockVault()` re-encrypts any vault whose KDF is weaker than `CURRENT_KDF`. Old ciphertexts remain in the vault repo's git history, so only a master password change makes them useless.
 
 **History**: v1 → v2: Removed `category` field from PasswordEntry
 
@@ -146,40 +159,45 @@ Schema version tracked in `vaultVersion` field (current: `2`). `migrateVault()` 
 
 ### Security Monitor (security-monitor.ts)
 
-- Tracks failed login attempts (both password and WebAuthn)
+- Tracks failed login attempts (both password and WebAuthn). Missing token, missing vault, and network errors do not count; only a password that opens no copy of the vault does.
 - After **5 failed attempts** (`MAX_RETRIES` in Login.svelte):
-  - Logs detailed security event to GitHub (device fingerprint, browser info, network info)
-  - Wipes all localStorage
-  - Clears WebAuthn credentials
+  - Builds a security event (device fingerprint, browser info, network info)
+  - Wipes all localStorage (cached vault, encrypted token, biometric record)
+  - Queues the event in `pending_security_events`; it is uploaded to `security-log.json` after the next successful unlock (no credential exists before login, by design)
   - Reloads the page
-- Retry counts persist in localStorage: `webauthn_retry_count`, `password_retry_count`
+- Retry counts persist in localStorage: `webauthn_retry_count`, `password_retry_count`. They are advisory: anyone with the device can reset them, and the real defense against guessing is the KDF.
 
 ### WebAuthn Flow
 
-**Registration** (after successful password login):
+**Registration** (after successful password login, if the checkbox was ticked):
 
-1. Generate random challenge → `navigator.credentials.create()`
-2. Derive encryption key from public key + random salt
-3. Encrypt master key with derived key
-4. Store encrypted master key + credential ID + public key + salt in localStorage
+1. `navigator.credentials.create()` with `extensions.prf.eval.first = prfSalt` (random 32 bytes)
+2. If the authenticator only reports `prf.enabled`, run one `get()` to evaluate the PRF
+3. Wrapping key = HKDF-SHA256(PRF output); encrypt the master key with it
+4. Store `{ version: 2, credentialId, prfSalt, vaultSalt, nonce, ciphertext }` in localStorage
+5. Authenticators without PRF are refused (the checkbox is hidden when the browser reports no PRF support)
 
 **Authentication**:
 
-1. Retrieve stored credential ID → `navigator.credentials.get()`
-2. Reconstruct encryption key from stored public key + salt
-3. Decrypt master key
-4. Load cached vault from localStorage
+1. `navigator.credentials.get()` with the same `prfSalt`, `userVerification: "required"`
+2. HKDF(PRF output) → decrypt master key
+3. Open the GitHub copy (if the token is stored) or the cached vault with it. If GitHub's copy was re-encrypted elsewhere, fall back to the password.
+
+The record is cleared whenever the vault key changes (password change, KDF upgrade). Records from older versions (public-key wrapped) are discarded on the login screen. The automatic biometric prompt only happens on the first login screen of a page load.
 
 localStorage keys: `webauthn_credential_id`, `webauthn_encrypted_key`
 
 ### GitHub Sync
 
-- Requires: private repo + PAT with `repo` scope
-- Env var: `VITE_GITHUB_PAT`
-- Config stored in localStorage via `github-auth.ts`
-- On login: downloads `vault.json` from GitHub
-- On any vault change: auto-uploads to GitHub
-- If GitHub unavailable: falls back to localStorage cache
+- Requires: private repo (`GITHUB_REPO` in `github-auth.ts`) + a fine-grained PAT limited to that repo with Contents read/write
+- Token entered on the login screen ("GitHub access token") once per device; stored encrypted; a token GitHub rejects (401) is forgotten
+- Uploads verify the repo is private first and refuse otherwise
+- All GitHub requests use `cache: "no-store"` (the Contents API is cached for 60s; stale shas caused conflicts)
+- On login: downloads `vault.json`, tries it and the local cache with the password
+- On any vault change: marks `vault_sync_pending`, then uploads; uploads are serialized and coalesced
+- If GitHub unavailable: falls back to localStorage cache; pending local changes win on the next unlock
+- Only edits set `vault_sync_pending`. Unlocking never marks or uploads a cached copy unless GitHub's copy is known to be older (just adopted, or missing), so a stale cache can't overwrite newer changes
+- If GitHub's copy can't be opened with the current key (password changed elsewhere): the local copy opens, sync pauses, nothing is uploaded over it
 - Conflict resolution: last write wins
 - Repo structure: `vault.json` (encrypted vault) + `security-log.json` (security events)
 
@@ -200,6 +218,7 @@ Hardcoded `TITLE_TO_DOMAIN` mapping for ~30 password entries. Title matching is 
 
 - **Desktop**: 2-column. Left panel (40%, `md:w-2/5`) = password list. Right panel (60%) = detail/form view.
 - **Mobile**: Full-width stacked. Hamburger button opens slide-out drawer (`animate-slide-in-left`).
+- **Auto-lock**: `PasswordManager.svelte` locks the vault after 15 minutes without pointer, keyboard, or scroll activity (`AUTO_LOCK_MS`), also when returning to a tab that sat idle.
 - Password list grouped alphabetically (A-Z, `#` for special chars) with sticky letter headers.
 
 ### Design System
@@ -261,15 +280,18 @@ Visual feedback: clipboard icon → animated checkmark (stroke draw + circle pop
 - Never skip `if (!browser)` checks in crypto/storage code
 - Never change the encryption algorithm without a vault migration plan
 - GitHub sync repo must be private
-- `VITE_GITHUB_PAT` env var required for GitHub sync (PAT with `repo` scope)
+- Never put secrets in `VITE_*` env vars or anywhere in client code: they ship in the public JS bundle
+- Render user-supplied URLs only through `toSafeExternalUrl()` (blocks `javascript:` and other schemes)
+- New external hosts (images, fonts, APIs) must be added to `kit.csp` in `svelte.config.js`; the CSP is emitted as a meta tag
 
 ## Common Issues
 
-| Issue                                                    | Cause                           | Fix                                                                         |
-| -------------------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------- |
-| `@import must precede all other statements`              | CSS import order wrong          | Font `@import url(...)` must come before `@import "tailwindcss"` in app.css |
-| `Crypto operations can only be performed in the browser` | SSR attempting crypto           | Add `if (!browser) return` check                                            |
-| WebAuthn fails silently                                  | Document not focused            | Click on page before authenticating                                         |
-| `Property 'style' does not exist on type 'EventTarget'`  | SVG/img error handlers          | Cast with `e.currentTarget as HTMLImageElement`                             |
-| Favicons showing lock icon instead of logo               | Title not in mapping            | Add entry to `TITLE_TO_DOMAIN` in favicon.ts (case-sensitive exact match)   |
-| GitHub sync error                                        | Invalid PAT or repo not private | Check `VITE_GITHUB_PAT` and repo settings                                   |
+| Issue                                                            | Cause                             | Fix                                                                         |
+| ---------------------------------------------------------------- | --------------------------------- | --------------------------------------------------------------------------- |
+| `@import must precede all other statements`                      | CSS import order wrong            | Font `@import url(...)` must come before `@import "tailwindcss"` in app.css |
+| `Crypto operations can only be performed in the browser`         | SSR attempting crypto             | Add `if (!browser) return` check                                            |
+| WebAuthn fails silently                                          | Document not focused              | Click on page before authenticating                                         |
+| `Property 'style' does not exist on type 'EventTarget'`          | SVG/img error handlers            | Cast with `e.currentTarget as HTMLImageElement`                             |
+| Favicons showing lock icon instead of logo                       | Title not in mapping              | Add entry to `TITLE_TO_DOMAIN` in favicon.ts (case-sensitive exact match)   |
+| GitHub sync error                                                | Invalid token or repo not private | Log out, use "Use a different GitHub token", check repo settings            |
+| `Refused to ... because it violates ... Content Security Policy` | Host not in CSP                   | Add it to `kit.csp.directives` in `svelte.config.js`                        |

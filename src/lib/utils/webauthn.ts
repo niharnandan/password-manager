@@ -1,26 +1,180 @@
 import { browser } from "$app/environment";
-import { encrypt, decrypt } from "./crypto";
-import nacl from "tweetnacl";
+import {
+  decodeBase64,
+  decryptBytes,
+  encodeBase64,
+  encryptBytes,
+  hkdfSha256,
+  randomBytes,
+  wipeBytes,
+} from "./crypto";
 
 const WEBAUTHN_CREDENTIAL_KEY = "webauthn_credential_id";
 const WEBAUTHN_ENCRYPTED_KEY = "webauthn_encrypted_key";
+const WRAP_KEY_INFO = "password-manager/webauthn-prf-wrap/v2";
+const TIMEOUT_MS = 30000;
 
-export interface WebAuthnStoredData {
+/**
+ * Biometric unlock record. The master key is encrypted under a key derived
+ * from the authenticator's PRF output, which the authenticator only releases
+ * after user verification. Nothing stored here is enough to recover the
+ * master key without the authenticator.
+ */
+export interface WebAuthnRecord {
+  version: 2;
   credentialId: string;
-  publicKey: string;
-  encryptedMasterKey: string;
+  prfSalt: string;
+  /** Salt of the vault key this record unlocks; stale once the key changes. */
+  vaultSalt: string;
   nonce: string;
-  salt: string;
+  ciphertext: string;
 }
+
+export type WebAuthnAuthResult =
+  | { success: true; masterKey: Uint8Array; record: WebAuthnRecord }
+  | {
+      success: false;
+      error: string;
+      /** The record can't open the vault any more; delete it. */
+      staleRecord?: boolean;
+      /** Not a failed verification; the password is the only way in. */
+      passwordRequired?: boolean;
+    };
 
 export function isWebAuthnSupported(): boolean {
   if (!browser) return false;
-  return !!(navigator.credentials && navigator.credentials.create);
+  return (
+    typeof window.PublicKeyCredential === "function" &&
+    !!navigator.credentials?.create &&
+    !!navigator.credentials?.get
+  );
+}
+
+/**
+ * Whether the browser reports support for the PRF extension. Returns null
+ * when it can't tell (older browsers); registration then checks directly.
+ */
+export async function getPrfSupport(): Promise<boolean | null> {
+  if (!isWebAuthnSupported()) return false;
+  try {
+    const credentialApi = PublicKeyCredential as typeof PublicKeyCredential & {
+      getClientCapabilities?: () => Promise<Record<string, boolean>>;
+    };
+    if (typeof credentialApi.getClientCapabilities !== "function") return null;
+    const capabilities = await credentialApi.getClientCapabilities();
+    const prf = capabilities?.["extension:prf"];
+    return typeof prf === "boolean" ? prf : null;
+  } catch {
+    return null;
+  }
+}
+
+function isWebAuthnRecord(value: unknown): value is WebAuthnRecord {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    record.version === 2 &&
+    typeof record.credentialId === "string" &&
+    typeof record.prfSalt === "string" &&
+    typeof record.vaultSalt === "string" &&
+    typeof record.nonce === "string" &&
+    typeof record.ciphertext === "string"
+  );
+}
+
+export function getWebAuthnRecord(): WebAuthnRecord | null {
+  if (!browser) return null;
+  try {
+    const raw = localStorage.getItem(WEBAUTHN_ENCRYPTED_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return isWebAuthnRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function hasWebAuthnCredential(): boolean {
+  return getWebAuthnRecord() !== null;
+}
+
+export function clearWebAuthnCredential(): void {
+  if (!browser) return;
+
+  localStorage.removeItem(WEBAUTHN_CREDENTIAL_KEY);
+  localStorage.removeItem(WEBAUTHN_ENCRYPTED_KEY);
+}
+
+/**
+ * Deletes biometric data written by older versions, which derived the
+ * wrapping key from the credential's public key (stored right next to it),
+ * so the master key was readable from localStorage without any biometric
+ * check. Returns true if anything was removed.
+ */
+export function discardLegacyWebAuthnData(): boolean {
+  if (!browser) return false;
+  const hasData =
+    localStorage.getItem(WEBAUTHN_CREDENTIAL_KEY) !== null ||
+    localStorage.getItem(WEBAUTHN_ENCRYPTED_KEY) !== null;
+  if (!hasData || hasWebAuthnCredential()) return false;
+  clearWebAuthnCredential();
+  return true;
+}
+
+function prfFirstOutput(credential: PublicKeyCredential): Uint8Array | null {
+  const first = credential.getClientExtensionResults().prf?.results?.first;
+  if (!first) return null;
+  if (first instanceof ArrayBuffer) return new Uint8Array(first);
+  if (ArrayBuffer.isView(first))
+    return new Uint8Array(first.buffer, first.byteOffset, first.byteLength);
+  return null;
+}
+
+async function wrappingKeyFromPrf(prfOutput: Uint8Array): Promise<Uint8Array> {
+  try {
+    return await hkdfSha256(prfOutput, WRAP_KEY_INFO);
+  } finally {
+    wipeBytes(prfOutput);
+  }
+}
+
+async function getAssertion(
+  credentialId: Uint8Array,
+  prfSalt: Uint8Array,
+): Promise<PublicKeyCredential | null> {
+  return (await navigator.credentials.get({
+    publicKey: {
+      challenge: randomBytes(32),
+      rpId: location.hostname,
+      allowCredentials: [{ id: credentialId, type: "public-key" }],
+      userVerification: "required",
+      timeout: TIMEOUT_MS,
+      extensions: { prf: { eval: { first: prfSalt } } },
+    },
+  })) as PublicKeyCredential | null;
+}
+
+function describeError(error: unknown, fallback: string): string {
+  if (!(error instanceof Error)) return fallback;
+  switch (error.name) {
+    case "NotAllowedError":
+      return "User cancelled or Face ID/Touch ID failed";
+    case "InvalidStateError":
+      return "Invalid authenticator state - please try again";
+    case "NotSupportedError":
+      return "WebAuthn not supported on this device";
+    case "SecurityError":
+      return "Security error - please try again";
+    case "AbortError":
+      return "Authentication was cancelled";
+    default:
+      return error.message || fallback;
+  }
 }
 
 export async function registerWebAuthnCredential(
-  _username: string,
   masterKey: Uint8Array,
+  vaultSalt: string,
 ): Promise<{ success: boolean; error?: string }> {
   if (!browser || !isWebAuthnSupported()) {
     return { success: false, error: "WebAuthn not supported" };
@@ -35,17 +189,16 @@ export async function registerWebAuthnCredential(
   }
 
   try {
-    const challenge = crypto.getRandomValues(new Uint8Array(32));
-
+    const prfSalt = randomBytes(32);
     const credential = (await navigator.credentials.create({
       publicKey: {
-        challenge,
+        challenge: randomBytes(32),
         rp: {
           name: "Secure Password Manager",
           id: location.hostname,
         },
         user: {
-          id: crypto.getRandomValues(new Uint8Array(32)), // Use random bytes instead of username
+          id: randomBytes(32), // Random handle; no personal data
           name: "Password Manager",
           displayName: "Password Manager",
         },
@@ -56,75 +209,64 @@ export async function registerWebAuthnCredential(
         authenticatorSelection: {
           authenticatorAttachment: "platform",
           userVerification: "required", // Ensure biometric verification
-          residentKey: "preferred", // Enable discoverable credentials
-          requireResidentKey: false, // Allow non-resident keys for broader compatibility
+          residentKey: "preferred",
+          requireResidentKey: false,
         },
-        attestation: "direct",
-        timeout: 30000, // Shorter timeout for faster UX
+        attestation: "none",
+        timeout: TIMEOUT_MS,
+        extensions: { prf: { eval: { first: prfSalt } } },
       },
-    })) as PublicKeyCredential;
+    })) as PublicKeyCredential | null;
 
     if (!credential) {
       return { success: false, error: "Failed to create credential" };
     }
 
-    const response = credential.response as AuthenticatorAttestationResponse;
-    const publicKeyBytes = new Uint8Array(response.getPublicKey() || []);
+    const credentialId = new Uint8Array(credential.rawId);
+    let prfOutput = prfFirstOutput(credential);
+    if (!prfOutput) {
+      if (!credential.getClientExtensionResults().prf?.enabled) {
+        return {
+          success: false,
+          error:
+            "this browser or authenticator doesn't support the WebAuthn PRF extension, which secure biometric unlock requires",
+        };
+      }
+      // Some authenticators only evaluate the PRF during an assertion.
+      const assertion = await getAssertion(credentialId, prfSalt);
+      prfOutput = assertion ? prfFirstOutput(assertion) : null;
+      if (!prfOutput) {
+        return { success: false, error: "Biometric setup was not completed" };
+      }
+    }
 
-    const salt = nacl.randomBytes(32);
-    const keyMaterial = new Uint8Array(publicKeyBytes.length + salt.length);
-    keyMaterial.set(publicKeyBytes);
-    keyMaterial.set(salt, publicKeyBytes.length);
-    const derivedKey = nacl.hash(keyMaterial).slice(0, 32);
+    const wrappingKey = await wrappingKeyFromPrf(prfOutput);
+    const { ciphertext, nonce } = encryptBytes(masterKey, wrappingKey);
+    wipeBytes(wrappingKey);
 
-    const keyString = Array.from(masterKey).join(",");
-    const { ciphertext, nonce } = encrypt(keyString, derivedKey);
-
-    const credentialIdBase64 = btoa(
-      String.fromCharCode(...new Uint8Array(credential.rawId)),
-    );
-    const publicKeyBase64 = btoa(String.fromCharCode(...publicKeyBytes));
-    const saltBase64 = btoa(String.fromCharCode(...salt));
-
-    const storedData: WebAuthnStoredData = {
-      credentialId: credentialIdBase64,
-      publicKey: publicKeyBase64,
-      encryptedMasterKey: ciphertext,
+    const record: WebAuthnRecord = {
+      version: 2,
+      credentialId: encodeBase64(credentialId),
+      prfSalt: encodeBase64(prfSalt),
+      vaultSalt,
       nonce,
-      salt: saltBase64,
+      ciphertext,
     };
 
-    localStorage.setItem(WEBAUTHN_CREDENTIAL_KEY, credentialIdBase64);
-    localStorage.setItem(WEBAUTHN_ENCRYPTED_KEY, JSON.stringify(storedData));
+    localStorage.setItem(WEBAUTHN_ENCRYPTED_KEY, JSON.stringify(record));
+    localStorage.setItem(WEBAUTHN_CREDENTIAL_KEY, record.credentialId);
 
     return { success: true };
   } catch (error) {
     console.error("WebAuthn registration error:", error);
-
-    let errorMessage = "Registration failed";
-    if (error instanceof Error) {
-      if (error.name === "NotAllowedError") {
-        errorMessage = "User cancelled or authentication failed";
-      } else if (error.name === "InvalidStateError") {
-        errorMessage = "Authenticator already registered";
-      } else if (error.name === "NotSupportedError") {
-        errorMessage = "WebAuthn not supported on this device";
-      } else if (error.name === "SecurityError") {
-        errorMessage = "Security error - please try again";
-      } else {
-        errorMessage = error.message;
-      }
-    }
-
-    return { success: false, error: errorMessage };
+    return {
+      success: false,
+      error: describeError(error, "Registration failed"),
+    };
   }
 }
 
-export async function authenticateWithWebAuthn(): Promise<{
-  success: boolean;
-  masterKey?: Uint8Array;
-  error?: string;
-}> {
+export async function authenticateWithWebAuthn(): Promise<WebAuthnAuthResult> {
   if (!browser || !isWebAuthnSupported()) {
     return { success: false, error: "WebAuthn not supported" };
   }
@@ -137,117 +279,52 @@ export async function authenticateWithWebAuthn(): Promise<{
     };
   }
 
-  const credentialId = localStorage.getItem(WEBAUTHN_CREDENTIAL_KEY);
-  if (!credentialId) {
+  const record = getWebAuthnRecord();
+  if (!record) {
     return { success: false, error: "No WebAuthn credential found" };
   }
 
   try {
-    const challenge = crypto.getRandomValues(new Uint8Array(32));
-
-    const credential = (await navigator.credentials.get({
-      publicKey: {
-        challenge,
-        allowCredentials: [
-          {
-            id: Uint8Array.from(atob(credentialId), (c) => c.charCodeAt(0)),
-            type: "public-key",
-          },
-        ],
-        userVerification: "required", // Direct biometric authentication
-        timeout: 30000, // Shorter timeout for faster UX
-      },
-    })) as PublicKeyCredential;
-
-    if (!credential) {
+    const assertion = await getAssertion(
+      decodeBase64(record.credentialId),
+      decodeBase64(record.prfSalt),
+    );
+    if (!assertion) {
       return { success: false, error: "Authentication failed" };
     }
 
-    const encryptedKeyData = localStorage.getItem(WEBAUTHN_ENCRYPTED_KEY);
-    if (!encryptedKeyData) {
-      return { success: false, error: "No encrypted key found" };
-    }
-
-    let storedData: WebAuthnStoredData;
-    try {
-      const parsed = JSON.parse(encryptedKeyData);
-
-      if (parsed.salt && !parsed.credentialId) {
-        return {
-          success: false,
-          error: "Legacy WebAuthn data detected. Please re-register.",
-        };
-      }
-
-      storedData = parsed as WebAuthnStoredData;
-    } catch {
-      return { success: false, error: "Invalid stored credential data" };
-    }
-
-    const publicKeyBytes = Uint8Array.from(atob(storedData.publicKey), (c) =>
-      c.charCodeAt(0),
-    );
-    const saltBytes = Uint8Array.from(atob(storedData.salt), (c) =>
-      c.charCodeAt(0),
-    );
-
-    const keyMaterial = new Uint8Array(
-      publicKeyBytes.length + saltBytes.length,
-    );
-    keyMaterial.set(publicKeyBytes);
-    keyMaterial.set(saltBytes, publicKeyBytes.length);
-    const derivedKey = nacl.hash(keyMaterial).slice(0, 32);
-
-    const decryptedKey = decrypt(
-      storedData.encryptedMasterKey,
-      storedData.nonce,
-      derivedKey,
-    );
-
-    if (!decryptedKey) {
+    const prfOutput = prfFirstOutput(assertion);
+    if (!prfOutput) {
       return {
         success: false,
-        error: "Failed to decrypt master key. Please re-register.",
+        error:
+          "This browser did not return the biometric key. Use your master password.",
+        passwordRequired: true,
       };
     }
 
-    const masterKey = new Uint8Array(
-      decryptedKey.split(",").map((n) => parseInt(n, 10)),
+    const wrappingKey = await wrappingKeyFromPrf(prfOutput);
+    const masterKey = decryptBytes(
+      record.ciphertext,
+      record.nonce,
+      wrappingKey,
     );
+    wipeBytes(wrappingKey);
 
-    return { success: true, masterKey };
-  } catch (error) {
-    console.error("WebAuthn authentication error:", error);
-
-    let errorMessage = "Authentication failed";
-    if (error instanceof Error) {
-      if (error.name === "NotAllowedError") {
-        errorMessage = "User cancelled or Face ID/Touch ID failed";
-      } else if (error.name === "InvalidStateError") {
-        errorMessage = "Invalid credential state";
-      } else if (error.name === "NotSupportedError") {
-        errorMessage = "WebAuthn not supported on this device";
-      } else if (error.name === "SecurityError") {
-        errorMessage = "Security error - please try again";
-      } else if (error.name === "AbortError") {
-        errorMessage = "Authentication was cancelled";
-      } else {
-        errorMessage = error.message;
-      }
+    if (!masterKey || masterKey.length !== 32) {
+      return {
+        success: false,
+        error: "Failed to decrypt master key. Please re-register.",
+        staleRecord: true,
+      };
     }
 
-    return { success: false, error: errorMessage };
+    return { success: true, masterKey, record };
+  } catch (error) {
+    console.error("WebAuthn authentication error:", error);
+    return {
+      success: false,
+      error: describeError(error, "Authentication failed"),
+    };
   }
-}
-
-export function hasWebAuthnCredential(): boolean {
-  if (!browser) return false;
-  return !!localStorage.getItem(WEBAUTHN_CREDENTIAL_KEY);
-}
-
-export function clearWebAuthnCredential(): void {
-  if (!browser) return;
-
-  localStorage.removeItem(WEBAUTHN_CREDENTIAL_KEY);
-  localStorage.removeItem(WEBAUTHN_ENCRYPTED_KEY);
 }

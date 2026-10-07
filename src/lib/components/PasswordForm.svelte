@@ -19,12 +19,21 @@
     const chars =
       "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+~`|}{[]:;?><,./-=";
     const passwordLength = 16;
-    const randomBytes = new Uint8Array(passwordLength);
-    crypto.getRandomValues(randomBytes);
-
-    formData.password = Array.from(randomBytes, (b) =>
-      chars.charAt(b % chars.length),
-    ).join("");
+    // Rejection sampling: `byte % chars.length` alone would make the first
+    // (256 % chars.length) characters more likely than the rest.
+    const limit = 256 - (256 % chars.length);
+    let generated = "";
+    while (generated.length < passwordLength) {
+      const randomBytes = crypto.getRandomValues(
+        new Uint8Array(passwordLength * 2),
+      );
+      for (const byte of randomBytes) {
+        if (byte < limit && generated.length < passwordLength) {
+          generated += chars.charAt(byte % chars.length);
+        }
+      }
+    }
+    formData.password = generated;
   }
 
   function handleSubmit() {
@@ -39,7 +48,12 @@
   let passwordCopied = false;
   async function copyPassword() {
     if (formData.password) {
-      await navigator.clipboard.writeText(formData.password);
+      try {
+        await navigator.clipboard.writeText(formData.password);
+      } catch (error) {
+        console.error("Copy failed:", error);
+        return;
+      }
       passwordCopied = true;
       setTimeout(() => {
         passwordCopied = false;
@@ -59,6 +73,7 @@
       id="title"
       type="text"
       bind:value={formData.title}
+      autocomplete="off"
       required
       class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm hover:shadow-md transition-all duration-300"
     />
@@ -74,6 +89,7 @@
       id="username"
       type="text"
       bind:value={formData.username}
+      autocomplete="off"
       class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm hover:shadow-md transition-all duration-300"
     />
   </div>
@@ -89,6 +105,7 @@
         id="password"
         type={showPassword ? "text" : "password"}
         bind:value={formData.password}
+        autocomplete="off"
         required
         class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm hover:shadow-md transition-all duration-300 pr-36"
       />
@@ -199,6 +216,8 @@
       id="url"
       type="text"
       bind:value={formData.url}
+      autocomplete="off"
+      placeholder="https://example.com"
       class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm hover:shadow-md transition-all duration-300"
     />
   </div>
